@@ -1,0 +1,20 @@
+[
+  {
+    "id": "REQ-1001",
+    "stationId": "drink-refill",
+    "customerName": "Mia Santos",
+    "subject": "Pickup time change",
+    "message": "Can I collect my refill after 6 PM?",
+    "status": "Open",
+    "createdAt": "2026-09-22T08:41:53.315Z"
+  },
+  {
+    "id": "REQ-1002",
+    "stationId": "drink-refill",
+    "customerName": "Noah Garcia",
+    "subject": "Container return",
+    "message": "I have two empty containers to return.",
+    "status": "Open",
+    "createdAt": "2026-09-22T08:41:53.315Z"
+  }
+]

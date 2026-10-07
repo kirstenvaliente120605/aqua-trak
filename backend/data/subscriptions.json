@@ -1,0 +1,17 @@
+[
+  {
+    "id": "SUB-78417FB3",
+    "userId": "1bdf2e51-78e4-4c9d-985d-040b6c44ee35",
+    "customerName": "Customer Demo",
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 4,
+    "frequency": "monthly",
+    "unitPrice": 35,
+    "discountRate": 0.1,
+    "estimatedTotal": 126,
+    "status": "Active",
+    "nextRefill": "2026-10-22T08:12:25.129Z",
+    "createdAt": "2026-09-22T08:12:25.129Z"
+  }
+]

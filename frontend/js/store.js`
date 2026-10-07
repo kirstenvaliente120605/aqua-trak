@@ -1,0 +1,244 @@
+/**
+ * AquaTracker — Centralized Data Store & Mock API (store.js)
+ *
+ * This module provides a single source of truth for all three roles.
+ * It abstracts localStorage access into "API-swappable" stubs.
+ */
+
+(function (global) {
+  "use strict";
+
+  const STORE_KEYS = {
+    STATIONS: "aquatracker_stations_db",
+    ORDERS: "aquatracker_orders_db",
+    USERS: "aquatracker_users_db",
+    INVENTORY: "aquatracker_inventory_db",
+    PRICING: "aquatracker_pricing_db",
+    PROMOTIONS: "aquatracker_promotions_db",
+    NOTIFICATIONS: "aquatracker_notifications_db",
+  };
+
+  const DEFAULT_STATIONS = [
+    {
+      id: "drink-refill",
+      name: "DRINK n' REFILL Purified Water Refilling Station",
+      address: "45 Sabellano St, San Jose District, Pagadian City",
+      phone: "0918 962 5038",
+      hours: "Mon–Sat 7:30 AM–5:00 PM",
+      ownerId: "usr-own-001",
+    },
+    {
+      id: "ultra-pure",
+      name: "Ultra Pure Water Refilling Station",
+      address: "Purok Bakhaw A, Brgy. Kawit, Pagadian City",
+      phone: "0970 488 8866",
+      hours: "Mon–Sun 8:00 AM–6:00 PM",
+      ownerId: "usr-own-002",
+    }
+  ];
+
+  const DEFAULT_PRICING = {
+    "drink-refill": {
+      "5-gallon-slim": 35,
+      "5-gallon-round": 30,
+      "alkaline-premium": 45,
+    }
+  };
+
+  const DEFAULT_INVENTORY = {
+    "drink-refill": {
+      caps: 500,
+      seals: 450,
+      bottles: 120,
+    }
+  };
+
+  function initStore() {
+    if (typeof localStorage === "undefined") return;
+    if (!localStorage.getItem(STORE_KEYS.STATIONS)) localStorage.setItem(STORE_KEYS.STATIONS, JSON.stringify(DEFAULT_STATIONS));
+    if (!localStorage.getItem(STORE_KEYS.PRICING)) localStorage.setItem(STORE_KEYS.PRICING, JSON.stringify(DEFAULT_PRICING));
+    if (!localStorage.getItem(STORE_KEYS.INVENTORY)) localStorage.setItem(STORE_KEYS.INVENTORY, JSON.stringify(DEFAULT_INVENTORY));
+    if (!localStorage.getItem(STORE_KEYS.ORDERS)) localStorage.setItem(STORE_KEYS.ORDERS, JSON.stringify([]));
+    if (!localStorage.getItem(STORE_KEYS.USERS)) localStorage.setItem(STORE_KEYS.USERS, JSON.stringify([]));
+    if (!localStorage.getItem(STORE_KEYS.PROMOTIONS)) localStorage.setItem(STORE_KEYS.PROMOTIONS, JSON.stringify([]));
+    if (!localStorage.getItem(STORE_KEYS.NOTIFICATIONS)) localStorage.setItem(STORE_KEYS.NOTIFICATIONS, JSON.stringify([]));
+  }
+
+  async function fetchOrders(stationId = null, status = null) {
+    initStore();
+    let orders = JSON.parse(localStorage.getItem(STORE_KEYS.ORDERS) || "[]");
+    if (stationId) orders = orders.filter(o => o.stationId === stationId);
+    if (status) orders = orders.filter(o => o.status === status);
+    return orders;
+  }
+
+  async function updateOrderStatus(orderId, newStatus, note = "") {
+    initStore();
+    const orders = JSON.parse(localStorage.getItem(STORE_KEYS.ORDERS) || "[]");
+    const index = orders.findIndex(o => o.id === orderId);
+    if (index === -1) return { success: false, error: "Order not found" };
+    orders[index].status = newStatus;
+    if (note) orders[index].lastNote = note;
+    orders[index].updatedAt = new Date().toISOString();
+    localStorage.setItem(STORE_KEYS.ORDERS, JSON.stringify(orders));
+    return { success: true, order: orders[index] };
+  }
+
+  async function fetchStations() {
+    initStore();
+    return JSON.parse(localStorage.getItem(STORE_KEYS.STATIONS) || "[]");
+  }
+
+  async function updateStationProfile(stationId, data) {
+    initStore();
+    const stations = JSON.parse(localStorage.getItem(STORE_KEYS.STATIONS) || "[]");
+    const index = stations.findIndex(s => s.id === stationId);
+    if (index === -1) return { success: false };
+    stations[index] = { ...stations[index], ...data };
+    localStorage.setItem(STORE_KEYS.STATIONS, JSON.stringify(stations));
+    return { success: true };
+  }
+
+  async function fetchPricing(stationId) {
+    initStore();
+    const pricing = JSON.parse(localStorage.getItem(STORE_KEYS.PRICING) || "{}");
+    return pricing[stationId] || {};
+  }
+
+  async function updatePricing(stationId, product, price) {
+    initStore();
+    const pricing = JSON.parse(localStorage.getItem(STORE_KEYS.PRICING) || "{}");
+    if (!pricing[stationId]) pricing[stationId] = {};
+    pricing[stationId][product] = parseFloat(price);
+    localStorage.setItem(STORE_KEYS.PRICING, JSON.stringify(pricing));
+    return { success: true };
+  }
+
+  async function fetchInventory(stationId) {
+    initStore();
+    const inv = JSON.parse(localStorage.getItem(STORE_KEYS.INVENTORY) || "{}");
+    return inv[stationId] || { caps: 0, seals: 0, bottles: 0 };
+  }
+
+  async function updateInventory(stationId, item, amount) {
+    initStore();
+    const inv = JSON.parse(localStorage.getItem(STORE_KEYS.INVENTORY) || "{}");
+    if (!inv[stationId]) inv[stationId] = { caps: 0, seals: 0, bottles: 0 };
+    inv[stationId][item] += parseInt(amount);
+    localStorage.setItem(STORE_KEYS.INVENTORY, JSON.stringify(inv));
+    return { success: true, current: inv[stationId] };
+  }
+
+  async function fetchStaff(stationId) {
+    initStore();
+    const users = JSON.parse(localStorage.getItem(STORE_KEYS.USERS) || "[]");
+    return users.filter(u => u.role === 'staff' && u.stationId === stationId);
+  }
+
+  async function addStaffMember(user) {
+    initStore();
+    const users = JSON.parse(localStorage.getItem(STORE_KEYS.USERS) || "[]");
+    users.push({ ...user, userId: "usr-stf-" + Date.now(), role: 'staff' });
+    localStorage.setItem(STORE_KEYS.USERS, JSON.stringify(users));
+    return { success: true };
+  }
+
+  async function removeStaffMember(userId) {
+    initStore();
+    const users = JSON.parse(localStorage.getItem(STORE_KEYS.USERS) || "[]");
+    const filtered = users.filter(u => u.userId !== userId);
+    localStorage.setItem(STORE_KEYS.USERS, JSON.stringify(filtered));
+    return { success: true };
+  }
+
+  // --- New Business Logic for Owner Dashboard ---
+
+  async function fetchBusinessStats(stationId) {
+    initStore();
+    const orders = await fetchOrders(stationId);
+    const users = JSON.parse(localStorage.getItem(STORE_KEYS.USERS) || "[]");
+    const stationCustomers = users.filter(u => u.role === 'customer'); // In a real app, filter by those who ordered from this station
+
+    const revenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const today = new Date().toISOString().split('T')[0];
+    const ordersToday = orders.filter(o => o.createdAt.startsWith(today)).length;
+
+    return {
+      revenue: revenue,
+      orderVolume: orders.length,
+      ordersToday: ordersToday,
+      customerCount: stationCustomers.length,
+    };
+  }
+
+  async function fetchCustomers(stationId) {
+    initStore();
+    const orders = await fetchOrders(stationId);
+    const users = JSON.parse(localStorage.getItem(STORE_KEYS.USERS) || "[]");
+
+    // Find all unique users who ordered from this station
+    const customerIds = [...new Set(orders.map(o => o.userId || 'unknown'))];
+    return users.filter(u => customerIds.includes(u.userId)).map(u => ({
+      ...u,
+      totalSpend: orders.filter(o => o.userId === u.userId).reduce((sum, o) => sum + (o.total || 0), 0),
+      orderCount: orders.filter(o => o.userId === u.userId).length
+    }));
+  }
+
+  async function fetchPromotions(stationId) {
+    initStore();
+    const promos = JSON.parse(localStorage.getItem(STORE_KEYS.PROMOTIONS) || "[]");
+    return promos.filter(p => p.stationId === stationId);
+  }
+
+  async function updatePromotion(stationId, promoData) {
+    initStore();
+    const promos = JSON.parse(localStorage.getItem(STORE_KEYS.PROMOTIONS) || "[]");
+    if (promoData.id) {
+      const idx = promos.findIndex(p => p.id === promoData.id);
+      if (idx !== -1) promos[idx] = { ...promos[idx], ...promoData };
+    } else {
+      promos.push({ ...promoData, id: "promo-" + Date.now(), stationId });
+    }
+    localStorage.setItem(STORE_KEYS.PROMOTIONS, JSON.stringify(promos));
+    return { success: true };
+  }
+
+  async function fetchShiftLogs(stationId) {
+    initStore();
+    // Prototype simulation: return dummy logs
+    return [
+      { userId: "usr-stf-001", name: "Dani Cruz", status: "on-shift", clockIn: "08:00 AM" },
+      { userId: "usr-stf-002", name: "Alex Reyes", status: "off-shift", clockIn: "N/A" },
+    ];
+  }
+
+  async function updateShiftStatus(userId, status) {
+    initStore();
+    // Prototype simulation
+    return { success: true, status };
+  }
+
+  async function fetchCustomerRequests(stationId) {
+    initStore();
+    // Prototype simulation: return dummy requests
+    return [
+      { id: "req-1", customer: "Mia Santos", message: "Please leave the 2 bottles at the side gate.", status: "pending" },
+      { id: "req-2", customer: "Noah Garcia", message: "Can I change delivery to 4PM?", status: "resolved" },
+    ];
+  }
+
+  const AquaStore = {
+    fetchOrders, updateOrderStatus, fetchStations, updateStationProfile,
+    fetchPricing, updatePricing, fetchInventory, updateInventory,
+    fetchStaff, addStaffMember, removeStaffMember, initStore,
+    fetchBusinessStats, fetchCustomers, fetchPromotions, updatePromotion,
+    fetchShiftLogs, updateShiftStatus, fetchCustomerRequests,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = AquaStore;
+  } else {
+    global.AquaStore = AquaStore;
+  }
+})(typeof window !== "undefined" ? window : this);

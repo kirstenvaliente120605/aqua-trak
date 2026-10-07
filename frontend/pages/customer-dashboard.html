@@ -1,0 +1,1914 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#073b4c">
+  <title>AquaTracker — Customer Workspace</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="customer-dashboard">
+
+  <div class="app-shell" id="app">
+    <!-- Dynamic Sidebar (Rendered via AquaRoles + user permissions) -->
+    <aside class="sidebar" id="sidebar">
+      <a class="mark mark-compact" href="/">
+        <span class="mark-icon">≈</span>
+        <span>Aqua<span class="mark-accent">Tracker</span></span>
+      </a>
+
+      <div class="account-chip" id="user-chip">
+        <span class="avatar" id="user-avatar">MS</span>
+        <div>
+          <strong id="user-name">Mia Santos</strong>
+          <small id="user-role-label">Household Account</small>
+        </div>
+      </div>
+
+      <nav class="side-nav" id="side-nav">
+        <!-- Rendered dynamically by roles.js -->
+      </nav>
+
+      <a class="signout" href="#" onclick="AquaAuth.logout(); return false;">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        Sign out
+      </a>
+    </aside>
+
+    <!-- Workspace View Area -->
+    <section class="workspace">
+      <header class="topbar">
+        <div class="mobile-menu">
+          <button type="button" id="mobile-toggle" aria-label="Toggle Navigation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+        </div>
+
+        <div>
+          <small id="view-eyebrow">Customer Workspace</small>
+          <h1 id="view-title">Station Finder</h1>
+        </div>
+
+        <div class="top-actions">
+          <button class="icon-button" id="notif-btn" type="button" aria-label="Notifications" onclick="switchSection('notifications')">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="badge" id="notif-badge">2</span>
+          </button>
+          <div class="top-account">
+            <strong id="top-name">Mia Santos</strong>
+            <small id="top-subtitle">Pagadian City</small>
+          </div>
+          <span class="avatar pale" id="top-avatar">MS</span>
+        </div>
+      </header>
+
+      <main class="content" id="main-content">
+        <!-- Dynamic Section Views are rendered here -->
+      </main>
+    </section>
+  </div>
+
+  <!-- Toast Notification Element -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Shared Modal Container -->
+  <div class="glass-modal-backdrop" id="modal-backdrop">
+    <div class="glass-modal" id="modal-content">
+      <!-- Injected modal body -->
+    </div>
+  </div>
+
+  <!-- Load Centralized Role Config & Auth Route Guards -->
+  <script src="/js/roles.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <script src="/js/location.js"></script>
+
+  <script>
+    // -------------------------------------------------------------
+    // CLIENT INITIALIZATION & ROLE GUARD CHECK
+    // -------------------------------------------------------------
+    let currentUser = null;
+    let currentSection = 'station-finder';
+    // Active chip filter for the station finder, replayed when the customer's
+    // location changes and the list has to re-render.
+    let stationFilter = 'all';
+    let stationMapHandle = null;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 1. Enforce Role Guard: Only 'customer' allowed on this dashboard
+      currentUser = await AquaAuth.requireRole('customer');
+      if (!currentUser) return; // Route guard redirected to login or peer dashboard
+
+      AquaCommon.initStore();
+      AquaDashboard.initDataStores();
+      // 2. Hydrate User Details in Topbar & Sidebar
+      hydrateUserDisplay(currentUser);
+
+      // 3. Render Role-Based Navigation Items
+      renderNavigation(currentUser);
+
+      // 4. Setup Mobile Navigation Toggle
+      setupMobileMenu();
+
+      // 5. Read Hash or Default Section
+      const hash = window.location.hash.replace('#', '') || 'station-finder';
+      switchSection(hash);
+    });
+
+    function hydrateUserDisplay(user) {
+      const initials = (user.name || 'CU').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+      document.getElementById('user-name').textContent = user.name;
+      document.getElementById('top-name').textContent = user.name;
+      document.getElementById('user-avatar').textContent = initials;
+      document.getElementById('top-avatar').textContent = initials;
+      document.getElementById('user-role-label').textContent = user.subtitle || 'Household Account';
+      document.getElementById('top-subtitle').textContent = user.address ? user.address.split(',')[0] : 'Pagadian City';
+    }
+
+    function renderNavigation(user) {
+      const navContainer = document.getElementById('side-nav');
+      const navItems = AquaRoles.getAuthorizedNav(user);
+
+      navContainer.innerHTML = navItems.map(item => `
+        <button type="button" data-section="${item.section}" class="${currentSection === item.section ? 'active' : ''}" onclick="switchSection('${item.section}')">
+          ${getSvgIcon(item.icon)}
+          <span>${item.label}</span>
+        </button>
+      `).join('');
+    }
+
+    function getSvgIcon(name) {
+      const icons = {
+        'map-pin': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+        'droplet': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
+        'clock': '<svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+        'refresh-cw': '<svg class="nav-icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+        'award': '<svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>',
+        'bell': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+        'user': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+      };
+      return icons[name] || icons['map-pin'];
+    }
+
+    /**
+     * Single source of truth for the dashboard's line icons.
+     * Every entry is stroke-only and un-sized, so CSS on the wrapping class
+     * decides both the fill/stroke treatment and the final dimensions. That
+     * keeps one visual weight across pills, cards, tiles and buttons.
+     */
+    const UI_ICONS = {
+      truck: '<path d="M2 6h11v10H2z"/><path d="M13 9h4.2l2.8 3.2V16h-7"/><circle cx="6" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
+      store: '<path d="M3 9.5 5 4h14l2 5.5"/><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 4 0 2.5 2.5 0 0 0 4 0 2.5 2.5 0 0 0 5 0"/><path d="M9 21v-5h6v5"/>',
+      clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.4 2"/>',
+      pin: '<path d="M20 10.4c0 5.4-8 12.1-8 12.1s-8-6.7-8-12.1a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10.2" r="2.9"/>',
+      phone: '<path d="M21 16.6v2.6a1.8 1.8 0 0 1-2 1.8 17.6 17.6 0 0 1-7.7-2.7 17.3 17.3 0 0 1-5.3-5.3A17.6 17.6 0 0 1 3.3 5.2 1.8 1.8 0 0 1 5.1 3.2h2.6a1.8 1.8 0 0 1 1.8 1.5c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L8.6 10.2a14 14 0 0 0 5.3 5.3l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6a1.8 1.8 0 0 1 1.6 1.9Z"/>',
+      drop: '<path d="M12 2.7s6.2 6.4 6.2 10.6a6.2 6.2 0 1 1-12.4 0C5.8 9.1 12 2.7 12 2.7Z"/>',
+      shield: '<path d="M12 2.5 20 5.5v6c0 4.7-3.4 8.6-8 10-4.6-1.4-8-5.3-8-10v-6Z"/><path d="m9 11.8 2.2 2.2L15.4 9.8"/>',
+      refresh: '<path d="M20 11a8 8 0 0 0-14.9-3"/><polyline points="5 4 5 8 9 8"/><path d="M4 13a8 8 0 0 0 14.9 3"/><polyline points="19 20 19 16 15 16"/>',
+      tag: '<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7.2" cy="7.2" r="1.3"/>',
+      star: '<path d="m12 2.5 2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 17.6 6.1 20.7l1.2-6.6-4.8-4.6 6.6-.9Z"/>',
+      heart: '<path d="M20.6 12.6 12 21.2 3.4 12.6A5 5 0 0 1 12 4a5 5 0 0 1 8.6 8.6Z"/>',
+      bolt: '<path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12Z"/>',
+      gift: '<path d="M20 12v8.5H4V12"/><path d="M2.5 7.5h19V12h-19z"/><path d="M12 7.5v13"/><path d="M12 7.5S10.8 3 8.4 3a2.2 2.2 0 0 0 0 4.5H12Z"/><path d="M12 7.5S13.2 3 15.6 3a2.2 2.2 0 0 1 0 4.5H12Z"/>',
+    };
+
+    /** Wraps a UI_ICONS entry in a bare, CSS-sized <svg>. */
+    function uiIconSvg(name) {
+      return `<svg viewBox="0 0 24 24" aria-hidden="true">${UI_ICONS[name] || ''}</svg>`;
+    }
+
+    const NOTIF_ICON = { order: 'truck', subscription: 'refresh', promo: 'tag' };
+
+    function getNotifIcon(type) {
+      return UI_ICONS[NOTIF_ICON[type]] || UI_ICONS.tag;
+    }
+
+    function notifBadge(type) {
+      const known = ['order', 'subscription', 'promo'];
+      const kind = known.includes(type) ? type : 'promo';
+      return `<span class="notif-icon ${kind}"><svg viewBox="0 0 24 24" aria-hidden="true">${getNotifIcon(kind)}</svg></span>`;
+    }
+
+    function setupMobileMenu() {
+      const toggle = document.getElementById('mobile-toggle');
+      const sidebar = document.getElementById('sidebar');
+      if (toggle && sidebar) {
+        toggle.addEventListener('click', () => {
+          sidebar.classList.toggle('open');
+        });
+      }
+    }
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3200);
+    }
+
+    function openModal(html) {
+      const modalBackdrop = document.getElementById('modal-backdrop');
+      const modalContent = document.getElementById('modal-content');
+      modalContent.innerHTML = html;
+      modalBackdrop.classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('modal-backdrop').classList.remove('open');
+    }
+
+    // Close modal on backdrop click
+    document.getElementById('modal-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'modal-backdrop') closeModal();
+    });
+
+    // Close modal on Escape key press
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    // -------------------------------------------------------------
+    // SECTION ROUTING & RENDERERS
+    // -------------------------------------------------------------
+    async function switchSection(sectionId, param) {
+      currentSection = sectionId;
+      window.location.hash = sectionId;
+
+      // Update Nav Active State
+      document.querySelectorAll('#side-nav button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.section === sectionId);
+      });
+
+      // Close mobile drawer if open
+      document.getElementById('sidebar').classList.remove('open');
+
+      const main = document.getElementById('main-content');
+      const title = document.getElementById('view-title');
+      const eyebrow = document.getElementById('view-eyebrow');
+      main.innerHTML = `<div class="empty-state">Loading data…</div>`;
+
+      if (sectionId === 'station-finder') {
+        eyebrow.textContent = 'Nearest Refill Hubs';
+        title.textContent = 'Find Stations';
+        await renderStationFinder(main);
+      } else if (sectionId === 'order-refills') {
+        eyebrow.textContent = 'Water Refill';
+        title.textContent = 'Order Water Refills';
+        await renderOrderRefills(main, param);
+      } else if (sectionId === 'order-history') {
+        eyebrow.textContent = 'Live Tracking & Receipts';
+        title.textContent = 'Order History & Status';
+        await renderOrderHistory(main);
+      } else if (sectionId === 'subscriptions') {
+        eyebrow.textContent = 'Automated Plans';
+        title.textContent = 'Refill Subscriptions';
+        await renderSubscriptions(main);
+      } else if (sectionId === 'loyalty') {
+        eyebrow.textContent = 'Customer Loyalty';
+        title.textContent = 'AquaPoints & Rewards';
+        await renderLoyalty(main);
+      } else if (sectionId === 'notifications') {
+        eyebrow.textContent = 'Activity Stream';
+        title.textContent = 'Notifications';
+        await renderNotifications(main);
+      } else if (sectionId === 'profile') {
+        eyebrow.textContent = 'Customer Profile';
+        title.textContent = 'Account & Address Book';
+        await renderProfile(main);
+      }
+    }
+
+    // 1. STATION FINDER VIEW
+    async function renderStationFinder(container) {
+      container.innerHTML = `<div class="empty-state">Finding nearby stations...</div>`;
+      const stations = withLiveDistance(await AquaDashboard.fetchStations());
+      const saved = AquaDashboard.getSavedStations();
+
+      container.innerHTML = `
+        <section class="section-hero">
+          <span class="eyebrow">Local Refill Network · Pagadian City</span>
+          <h2>Clean water close to home.</h2>
+          <p>Explore verified water refilling stations in your barangay with live operating hours, delivery coverage, and guaranteed sanitization certificates.</p>
+        </section>
+
+        <!-- Location Point -->
+        <section class="location-card">
+          <div class="location-card-head">
+            <div class="location-card-copy">
+              <span class="eyebrow">Your Location</span>
+              <h3>Set your location point</h3>
+              <p data-location-summary>Tap the map or drop a pin to rank the nearest stations.</p>
+            </div>
+            <button type="button" class="button small" id="locate-btn">
+              <svg class="locate-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+              <span data-locate-label>Use my current location</span>
+            </button>
+          </div>
+          <div class="location-map" id="location-map" aria-label="Map for setting your location"></div>
+          <p class="location-note" data-location-note hidden></p>
+        </section>
+
+        <!-- Stats Overview -->
+        <div class="stats three">
+          <div class="stat-card">
+            <div class="stat-icon">⌖</div>
+            <div><b>${stations.length}</b><small>Verified Stations Nearby</small></div>
+          </div>
+          <div class="stat-card amber">
+            <div class="stat-icon">★</div>
+            <div><b>4.8</b><small>Average Station Rating</small></div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon">₱</div>
+            <div><b>₱25</b><small>Lowest Price / Gallon</small></div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="filter-bar">
+          <div class="search-input-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="station-search" placeholder="Search by station name, barangay, or water type..." oninput="handleStationSearch(this.value)">
+          </div>
+          <div class="filter-chips">
+            <button type="button" class="filter-chip active" onclick="filterStations('all', this)">All Stations</button>
+            <button type="button" class="filter-chip" onclick="filterStations('delivery', this)">Delivery Available</button>
+            <button type="button" class="filter-chip" onclick="filterStations('top-rated', this)">★ 4.8+ Rating</button>
+            <button type="button" class="filter-chip" onclick="filterStations('lowest-price', this)">Lowest Price First</button>
+          </div>
+        </div>
+
+        <!-- Station Cards Grid -->
+        <div class="station-grid" id="stations-list">
+          ${renderStationCardsHtml(stations, saved)}
+        </div>
+      `;
+
+      initLocationMapCard(stations);
+    }
+
+    // -------------------------------------------------------------
+    // LOCATION POINT (see /js/location.js)
+    // -------------------------------------------------------------
+
+    /**
+     * Re-ranks stations against the saved location point. Falls back to the
+     * seeded distanceKm when the customer has not set a location yet.
+     */
+    function withLiveDistance(stations, options = {}) {
+      const { sort = true } = options;
+      const point = AquaLocation.getSavedLocation();
+      if (!point) return stations;
+
+      const annotated = stations.map((station) => {
+        const km = AquaLocation.distanceKm(point, station.coords);
+        return km === null ? station : { ...station, distanceKm: km };
+      });
+
+      return sort
+        ? annotated.sort((a, b) => a.distanceKm - b.distanceKm)
+        : annotated;
+    }
+
+    async function initLocationMapCard(stations) {
+      stationMapHandle = await AquaLocation.initLocationMap('location-map', {
+        stations,
+        // Fires on map click and on marker drag - both already persisted.
+        onChange: (record) => {
+          renderLocationSummary(record);
+          clearLocationNote();
+          refreshStationList();
+        },
+      });
+
+      AquaLocation.bindLocateButton(document.getElementById('locate-btn'), {
+        onLocated: (record) => {
+          renderLocationSummary(record);
+          clearLocationNote();
+          // Marker jumps to the device position and zooms in. The button
+          // handler has already saved the point.
+          if (stationMapHandle) stationMapHandle.focusPoint(record);
+          refreshStationList();
+          showToast('Location updated. Stations re-ranked by distance.');
+        },
+        onError: (message) => {
+          showLocationNote(message);
+        },
+      });
+
+      renderLocationSummary(AquaLocation.getSavedLocation());
+    }
+
+    function renderLocationSummary(record) {
+      const summary = document.querySelector('[data-location-summary]');
+      if (!summary) return;
+
+      if (!record) {
+        summary.textContent = 'Tap the map or drop a pin to rank the nearest stations.';
+        return;
+      }
+
+      const when = new Date(record.updatedAt);
+      const stamp = Number.isNaN(when.getTime())
+        ? ''
+        : ` · set ${when.toLocaleString()}`;
+      summary.textContent = `${record.label} · ${Number(record.lat).toFixed(4)}, ${Number(record.lng).toFixed(4)}${stamp}`;
+    }
+
+    function showLocationNote(message) {
+      const note = document.querySelector('[data-location-note]');
+      if (!note) return;
+      note.textContent = message;
+      note.hidden = false;
+    }
+
+    function clearLocationNote() {
+      const note = document.querySelector('[data-location-note]');
+      if (!note) return;
+      note.hidden = true;
+      note.textContent = '';
+    }
+
+    /** Re-runs the current search + filter against the new location. */
+    async function refreshStationList() {
+      const list = document.getElementById('stations-list');
+      if (!list) return;
+
+      const query = document.getElementById('station-search')?.value || '';
+      const [filtered, all] = await Promise.all([
+        AquaDashboard.fetchStations(query, stationFilter),
+        AquaDashboard.fetchStations(),
+      ]);
+
+      list.innerHTML = renderStationCardsHtml(
+        withLiveDistance(filtered, { sort: stationFilter !== 'lowest-price' }),
+        AquaDashboard.getSavedStations()
+      );
+
+      // The map keeps showing the whole network, independent of the search.
+      if (stationMapHandle) stationMapHandle.renderStationPins(withLiveDistance(all));
+    }
+
+    function renderStationCardsHtml(stations, saved) {
+      if (!stations.length) return `<div class="empty-state">No refilling stations match your search.</div>`;
+      return stations.map(s => {
+        const isSaved = saved.includes(s.id);
+        return `
+          <article class="station-card" onclick="openStationDetailModal('${s.id}')" tabindex="0" role="button" aria-label="View details for ${s.name}" onkeydown="if(event.key==='Enter'||event.key===' '){openStationDetailModal('${s.id}');event.preventDefault();}">
+            <div class="station-card-top">
+              <div>
+                <span class="pill ${s.pricePerGallon <= 25 ? 'orange' : 'slate'}">${s.tag}</span>
+                <h3 class="station-name" style="margin-top:6px;">${s.name}</h3>
+                <div class="station-address">
+                  <svg style="width:14px;height:14px;" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  ${s.address} (${s.distanceKm} km away)
+                </div>
+              </div>
+              <button class="icon-button" style="width:34px;height:34px;" title="Bookmark Station" onclick="event.stopPropagation(); toggleSaveStation('${s.id}')">
+                <span style="color:${isSaved ? 'var(--teal)' : '#a0aec0'}">${isSaved ? '★' : '☆'}</span>
+              </button>
+            </div>
+
+            <div class="station-meta-strip">
+              <div>
+                <small style="color:#64807b;display:block;">Standard Refill</small>
+                <strong>₱${s.pricePerGallon}.00 <small style="font-size:11px;font-weight:normal;">/ gallon</small></strong>
+              </div>
+              <div style="text-align:right;">
+                <small style="color:#64807b;display:block;">Rating</small>
+                <strong style="color:var(--amber);">★ ${s.rating} <small style="font-size:11px;font-weight:normal;">(${s.reviewsCount})</small></strong>
+              </div>
+            </div>
+
+            <div class="station-badges">
+              ${s.deliveryAvailable
+                ? `<span class="pill blue"><span class="pill-icon" aria-hidden="true">${uiIconSvg('truck')}</span>Delivery</span>`
+                : `<span class="pill slate"><span class="pill-icon" aria-hidden="true">${uiIconSvg('store')}</span>Pickup Only</span>`}
+              <span class="pill slate"><span class="pill-icon" aria-hidden="true">${uiIconSvg('clock')}</span>${s.hours}</span>
+            </div>
+
+            <div class="station-actions">
+              <button class="button wide" type="button" onclick="event.stopPropagation(); switchSection('order-refills', '${s.id}')">
+                Order Refill →
+              </button>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    async function openStationDetailModal(stationId) {
+      const stations = await AquaDashboard.fetchStations();
+      const station = stations.find(s => s.id === stationId);
+      if (!station) return;
+      openModal(renderStationDetailModalHtml(station));
+    }
+
+    function renderStationDetailModalHtml(station) {
+      const products = station.products && station.products.length ? station.products : [
+        { type: '5-gal-slim', name: '5-Gallon Slim Container Refill', price: station.pricePerGallon, unit: 'per refill', desc: 'Standard dispenser bottle' },
+        { type: '5-gal-round', name: '5-Gallon Round Container Refill', price: station.pricePerGallon, unit: 'per refill', desc: 'Classic inverted cooler bottle' },
+      ];
+      const schedule = station.schedule && station.schedule.length ? station.schedule : [
+        { days: 'Operating Hours', hours: station.hours || '8:00 AM – 5:00 PM' }
+      ];
+      const certifications = station.certifications && station.certifications.length ? station.certifications : [
+        'DOH Water Safety Compliant',
+        'City Health Office Sanitary Permit'
+      ];
+
+      return `
+        <div class="modal-header" style="align-items:flex-start;margin-bottom:14px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+              <span class="pill ${station.pricePerGallon <= 25 ? 'orange' : 'slate'}">${station.tag}</span>
+              <span style="color:var(--amber);font-weight:700;font-size:13px;">★ ${station.rating} <small style="color:#64807b;font-weight:normal;">(${station.reviewsCount} reviews)</small></span>
+            </div>
+            <h3 style="margin:0;font:700 20px 'Fraunces',serif;color:var(--navy);line-height:1.25;">${station.name}</h3>
+          </div>
+          <button class="close-btn" type="button" onclick="closeModal()" aria-label="Close modal">×</button>
+        </div>
+
+        <!-- Location & Distance Details Strip -->
+        <div class="glass-card" style="padding:12px 14px;margin-bottom:16px;background:rgba(228,243,239,0.6);border-color:rgba(11,125,128,0.2);">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <span class="detail-strip-icon" aria-hidden="true">${uiIconSvg('pin')}</span>
+            <div style="flex:1;">
+              <strong style="color:var(--navy);font-size:13.5px;display:block;">${station.address}</strong>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;font-size:12px;color:#52706e;">
+                <span><strong>${station.distanceKm} km</strong> from your home</span>
+                <span>•</span>
+                <span class="detail-strip-inline"><span class="detail-strip-icon small" aria-hidden="true">${uiIconSvg('phone')}</span>${station.phone || '0918 962 5038'}</span>
+                ${station.deliveryCoverage ? `<span>•</span><span>Coverage: ${station.deliveryCoverage}</span>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Container & Product Pricing Options -->
+        <div style="margin-bottom:16px;">
+          <h4 style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#64807b;">
+            Refill & Container Pricing
+          </h4>
+          <div style="display:grid;gap:8px;">
+            ${products.map(p => `
+              <div class="glass-card" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:#fff;">
+                <div>
+                  <strong style="font-size:13.5px;color:var(--navy);display:block;">${p.name}</strong>
+                  ${p.desc ? `<small style="color:#78908d;font-size:11.5px;">${p.desc}</small>` : ''}
+                </div>
+                <div style="text-align:right;margin-left:12px;white-space:nowrap;">
+                  <strong style="color:var(--teal);font-size:15px;">₱${p.price}.00</strong>
+                  <small style="display:block;color:#64807b;font-size:10.5px;">${p.unit || 'per refill'}</small>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Service & Operating Schedule Grid -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
+          <!-- Fulfillment Info -->
+          <div class="glass-card" style="padding:12px 14px;background:#fff;">
+            <h4 style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#64807b;">
+              Service & Fulfillment
+            </h4>
+            <div style="font-size:12.5px;display:grid;gap:6px;">
+              <div>
+                <span style="color:#64807b;">Doorstep Delivery:</span>
+                <strong style="color:${station.deliveryAvailable ? 'var(--teal)' : '#64807b'};">
+                  ${station.deliveryAvailable ? `✓ Available (₱${station.deliveryFee !== undefined ? station.deliveryFee : 15}.00 fee)` : '✕ Pickup Only'}
+                </strong>
+              </div>
+              <div>
+                <span style="color:#64807b;">Counter Pickup:</span>
+                <strong style="color:var(--teal);">✓ Available (₱0)</strong>
+              </div>
+              <div>
+                <span style="color:#64807b;">Min Order:</span>
+                <strong>${station.minOrderGallons || 1} Gallon${(station.minOrderGallons || 1) > 1 ? 's' : ''}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Operating Schedule -->
+          <div class="glass-card" style="padding:12px 14px;background:#fff;">
+            <h4 style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#64807b;">
+              Operating Hours
+            </h4>
+            <div style="font-size:12px;display:grid;gap:4px;">
+              ${schedule.map(sch => `
+                <div style="display:flex;justify-content:space-between;gap:6px;">
+                  <span style="color:#64807b;">${sch.days}</span>
+                  <strong style="color:var(--navy);">${sch.hours}</strong>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- Water Quality & Certifications -->
+        <div style="margin-bottom:16px;">
+          <h4 style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#64807b;">
+            Water Quality & Standards
+          </h4>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${(station.waterTypes || ['Purified']).map(t => `<span class="pill blue" style="font-size:11px;"><span class="pill-icon" aria-hidden="true">${uiIconSvg('drop')}</span>${t}</span>`).join('')}
+            ${certifications.map(c => `<span class="pill slate" style="font-size:11px;"><span class="pill-icon" aria-hidden="true">${uiIconSvg('shield')}</span>${c}</span>`).join('')}
+          </div>
+        </div>
+
+        <!-- Sample Customer Review -->
+        ${station.sampleReview ? `
+          <div class="glass-card" style="padding:12px 14px;margin-bottom:20px;background:rgba(255,248,235,0.7);border-color:#fde68a;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="color:var(--amber);font-size:12px;">★ ★ ★ ★ ★</span>
+              <small style="color:#78908d;font-size:11px;">${station.sampleReview.date || 'Verified Customer'}</small>
+            </div>
+            <p style="margin:0;font-size:12.5px;color:#52706e;font-style:italic;">
+              "${station.sampleReview.comment}"
+            </p>
+            <small style="display:block;margin-top:4px;font-weight:600;color:var(--navy);font-size:11.5px;">
+              — ${station.sampleReview.author}
+            </small>
+          </div>
+        ` : ''}
+
+        <!-- Actions -->
+        <div style="display:flex;gap:10px;margin-top:20px;padding-top:14px;border-top:1px solid #eef2ee;">
+          <button class="button wide" type="button" onclick="closeModal(); switchSection('order-refills', '${station.id}')">
+            Order Refill from this Station →
+          </button>
+          <button class="button outline" type="button" onclick="closeModal()" style="min-width:90px;">
+            Close
+          </button>
+        </div>
+      `;
+    }
+
+    async function handleStationSearch(query) {
+      const stations = withLiveDistance(await AquaDashboard.fetchStations(query));
+      const saved = AquaDashboard.getSavedStations();
+      document.getElementById('stations-list').innerHTML = renderStationCardsHtml(stations, saved);
+    }
+
+    async function filterStations(filterType, btn) {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      stationFilter = filterType;
+      const query = document.getElementById('station-search')?.value || '';
+      const stations = withLiveDistance(
+        await AquaDashboard.fetchStations(query, filterType),
+        // Preserve the price ordering the customer asked for.
+        { sort: filterType !== 'lowest-price' }
+      );
+      const saved = AquaDashboard.getSavedStations();
+      document.getElementById('stations-list').innerHTML = renderStationCardsHtml(stations, saved);
+    }
+
+    function toggleSaveStation(stationId) {
+      const saved = AquaDashboard.toggleSavedStation(stationId);
+      showToast(saved.includes(stationId) ? 'Station saved to favorites!' : 'Removed from favorites.');
+      const query = document.getElementById('station-search')?.value || '';
+      handleStationSearch(query);
+    }
+
+    // 2. ORDER REFILLS FLOW
+    let orderFormState = {
+      stationId: 'drink-refill',
+      containerType: '5-gal-slim',
+      containerPrice: 35,
+      quantity: 2,
+      bottleExchange: 'swap', // swap | new
+      bottleDepositFee: 0,
+      fulfillment: 'delivery',
+      deliveryFee: 15,
+      // Not user-editable: derived from `fulfillment` in paymentForFulfillment().
+      paymentMethod: 'Cash on Delivery',
+      deliveryAddress: 'Block 4, Lot 12, Sunrise Village, Brgy. San Jose',
+      landmark: 'Near Yellow Chapel',
+      contactPhone: '+63 917 555 4321',
+      notes: '',
+      applyPointsVoucher: false
+    };
+
+    /** Counter pickup is settled in cash at the station; delivery is COD. */
+    function paymentForFulfillment(mode) {
+      return mode === 'pickup' ? AquaDashboard.PICKUP_PAYMENT_METHOD : 'Cash on Delivery';
+    }
+
+    // -------------------------------------------------------------
+    // STEP 1 - STATION PROXIMITY FILTER
+    //
+    // Reuses the single saved location point owned by /js/location.js.
+    // Permission is requested only from the button, never on page load.
+    // -------------------------------------------------------------
+    const ORDER_RADIUS_CHOICES = [1, 3, 5, 10];
+    let orderRadiusKm = 5;          // default proximity radius
+    let orderShowAllStations = false; // "Show all stations" override
+    let orderStationsCache = [];    // stations from the last render
+
+    /** Shorthand for the saved customer point, or null when there isn't one. */
+    function orderLocationPoint() {
+      return AquaLocation.getSavedLocation();
+    }
+
+    /** True while a saved location is narrowing the option list. */
+    function isOrderStationFilterActive() {
+      return Boolean(orderLocationPoint()) && !orderShowAllStations;
+    }
+
+    /** "1.2 km away" / "450 m away" - null-safe. */
+    function formatAway(km) {
+      if (km === null || km === undefined || !Number.isFinite(km)) return '';
+      return km < 1 ? `${Math.round(km * 1000)} m away` : `${km.toFixed(1)} km away`;
+    }
+
+    /**
+     * Builds the Step 1 option list from the cached stations.
+     *
+     * Filtering off  -> every station, distances annotated when a point exists.
+     * Filtering on   -> nearest first, capped at the chosen radius.
+     *
+     * The customer's already-selected station is never silently dropped: when
+     * the radius filter excludes it, it is appended to the end so the choice
+     * (and the rest of the order flow) stays intact.
+     */
+    function buildOrderStationOptions(stations, selectedId) {
+      const point = orderLocationPoint();
+      const filtering = Boolean(point) && !orderShowAllStations;
+
+      if (!point) {
+        // Seed stations carry a placeholder distanceKm used by the station
+        // finder cards. It must not leak into this picker: with no location of
+        // the customer's own, no distance is shown at all.
+        return {
+          filtering: false,
+          empty: false,
+          list: stations.map(s => ({ ...s, distanceKm: null })),
+          nearestId: null,
+        };
+      }
+
+      const ranked = AquaDashboard.getNearestStations(stations, point, orderRadiusKm);
+      const empty = filtering && ranked.length === 0;
+
+      if (!filtering) {
+        // "Show all stations": rank everything, but no radius cap. The nearest
+        // badge must be read off the UNCAPPED list - taking it from `ranked`
+        // would make the badge disappear whenever the radius excluded the
+        // closest station.
+        const all = AquaDashboard.getNearestStations(stations, point, null);
+        return {
+          filtering: false,
+          empty: false,
+          list: all,
+          nearestId: all.length ? all[0].id : null,
+        };
+      }
+
+      const nearestId = ranked.length ? ranked[0].id : null;
+      const list = ranked.slice();
+
+      const selected = stations.find(s => s.id === selectedId);
+      if (selected && !list.some(s => s.id === selectedId)) {
+        const km = AquaLocation.distanceKm(point, selected.coords);
+        list.push({ ...selected, distanceKm: km, keptForSelection: true });
+      }
+
+      return { filtering, empty, list, nearestId };
+    }
+
+    /** The Step 1 card markup. Extracted so the proximity filter can repaint in place. */
+    function renderOrderStationStepHtml(stations, selectedStation) {
+      const selectedId = selectedStation && selectedStation.id;
+      const view = buildOrderStationOptions(stations, selectedId);
+      const hasPoint = Boolean(orderLocationPoint());
+      const nearest = view.nearestId ? view.list.find(s => s.id === view.nearestId) : null;
+
+      return `
+        <div class="form-step-card" id="order-station-step">
+          <div class="step-header">
+            <span class="step-num">1</span>
+            <h3>Select Water Station</h3>
+          </div>
+
+          <div class="station-locate-row">
+            <button type="button" class="button small station-locate-btn" id="order-locate-btn">
+              <svg class="locate-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+              <span data-locate-label>${hasPoint ? 'Update location' : 'Use my current location'}</span>
+            </button>
+          </div>
+
+          <p class="station-locate-status${hasPoint ? ' is-active' : ''}" data-order-location-status>
+            ${hasPoint
+              ? 'Showing stations near your location.'
+              : 'Use your location to see the stations closest to you.'}
+          </p>
+
+          ${view.empty ? `
+            <div class="station-nearby-empty">
+              <strong>No stations within ${orderRadiusKm} km</strong>
+              <p>Nothing is close to your current location yet. Try a wider radius or see the full list.</p>
+              ${selectedStation ? `<p class="station-nearby-kept">Your order stays set to <strong>${esc(selectedStation.name)}</strong> in the meantime.</p>` : ''}
+              <div class="station-nearby-actions">
+                <button type="button" class="button small amber" onclick="setOrderRadiusKm(10)">Widen to 10 km</button>
+                <button type="button" class="button small outline" onclick="showAllOrderStations()">Show all stations</button>
+              </div>
+            </div>
+          ` : `
+            ${nearest ? `
+              <div class="station-nearest-note">
+                <span class="pill orange">★ Nearest</span>
+                <span class="station-nearest-name">${esc(nearest.name)}</span>
+                <span class="station-nearest-km">${esc(formatAway(nearest.distanceKm))}</span>
+              </div>
+            ` : ''}
+
+            ${view.filtering ? `
+              <div class="station-radius-row">
+                <span class="station-radius-label">Within</span>
+                <div class="station-radius-chips">
+                  ${ORDER_RADIUS_CHOICES.map(km => `
+                    <button type="button" class="radius-chip${orderRadiusKm === km && !orderShowAllStations ? ' active' : ''}" onclick="setOrderRadiusKm(${km})">${km} km</button>
+                  `).join('')}
+                </div>
+                <button type="button" class="station-show-all" onclick="showAllOrderStations()">Show all stations</button>
+              </div>
+            ` : ''}
+
+            <div class="form-field">
+              <label for="order-station-select">Refilling Station Hub</label>
+              <select id="order-station-select" onchange="updateOrderStation(this.value)">
+                ${view.list.length
+                  ? view.list.map(s => `
+                    <option value="${esc(s.id)}" ${s.id === selectedId ? 'selected' : ''}>
+                      ${s.id === view.nearestId ? '★ Nearest · ' : ''}${esc(s.name)} — ₱${s.pricePerGallon}/gal${s.deliveryAvailable ? ' · Delivery' : ''}${s.distanceKm !== undefined && s.distanceKm !== null ? ` · ${esc(formatAway(s.distanceKm))}` : ''}
+                    </option>
+                  `).join('')
+                  : '<option value="">No stations available</option>'}
+              </select>
+              ${view.list.some(s => s.keptForSelection)
+                ? `<small class="field-hint">Your previously selected station is kept below the ${orderRadiusKm} km results.</small>`
+                : ''}
+            </div>
+          `}
+        </div>`;
+    }
+
+    /**
+     * Repaints Step 1 only. Used when the radius changes or a location arrives,
+     * so the rest of the form (and scroll position) is left alone.
+     */
+    function refreshOrderStationStep() {
+      const host = document.getElementById('order-station-step');
+      if (!host) return;
+      const selected = orderStationsCache.find(s => s.id === orderFormState.stationId) || orderStationsCache[0];
+      host.outerHTML = renderOrderStationStepHtml(orderStationsCache, selected);
+      bindOrderLocateButton();
+    }
+
+    function setOrderRadiusKm(km) {
+      const next = Number(km);
+      if (!ORDER_RADIUS_CHOICES.includes(next)) return;
+      orderRadiusKm = next;
+      orderShowAllStations = false;   // picking a radius re-enables the filter
+      refreshOrderStationStep();
+    }
+
+    function showAllOrderStations() {
+      orderShowAllStations = true;
+      refreshOrderStationStep();
+    }
+
+    /**
+     * One-shot device location read, then repaint the option list.
+     *
+     * Delegates to AquaLocation.requestCurrentPosition(), which calls
+     * getCurrentPosition exactly once with maximumAge 0. There is no
+     * watchPosition and no polling anywhere in this flow. Failures show the
+     * friendly copy from location.js and leave the full list available.
+     */
+    async function useCurrentLocationForOrder() {
+      const status = document.querySelector('[data-order-location-status]');
+      try {
+        const coords = await AquaLocation.requestCurrentPosition();
+        await AquaLocation.saveLocation({
+          lat: coords.lat,
+          lng: coords.lng,
+          label: 'Current location',
+        });
+
+        orderShowAllStations = false;
+        refreshOrderStationStep();
+        showToast('Location updated. Showing the nearest stations.');
+      } catch (error) {
+        if (status) {
+          status.textContent = AquaLocation.friendlyMessage(error.message);
+          status.classList.add('is-error');
+        }
+      }
+    }
+
+    /**
+     * Wires the Step 1 locate button. Safe to call on every render because the
+     * button element is recreated each time, so listeners never stack up.
+     */
+    function bindOrderLocateButton() {
+      const button = document.getElementById('order-locate-btn');
+      const status = document.querySelector('[data-order-location-status]');
+      const label = button && button.querySelector('[data-locate-label]');
+      if (!button || !label) return;
+
+      const idleText = label.textContent;
+
+      button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        button.disabled = true;
+        button.classList.add('is-loading');
+        button.setAttribute('aria-busy', 'true');
+        label.textContent = 'Locating…';
+        if (status) status.classList.remove('is-error');
+
+        try {
+          await useCurrentLocationForOrder();
+        } finally {
+          button.disabled = false;
+          button.classList.remove('is-loading');
+          button.removeAttribute('aria-busy');
+          label.textContent = idleText;
+        }
+      });
+    }
+
+    /** Line icons for the fulfillment picker, reusing the shared icon map. */
+    function fulfillmentIconSvg(mode) {
+      return uiIconSvg(mode === 'pickup' ? 'store' : 'truck');
+    }
+
+    async function renderOrderRefills(container, presetStationId) {
+      const stations = await AquaDashboard.fetchStations();
+      // Cached so refreshOrderStationStep() can repaint Step 1 on its own.
+      orderStationsCache = stations;
+      if (presetStationId) orderFormState.stationId = presetStationId;
+
+      const selectedStation = stations.find(s => s.id === orderFormState.stationId) || stations[0];
+      orderFormState.containerPrice = selectedStation.pricePerGallon;
+
+      const isPickup = orderFormState.fulfillment === 'pickup';
+      const orderTotals = calculateOrderTotals(selectedStation);
+
+      container.innerHTML = `
+        <section class="section-hero">
+          <span class="eyebrow">On-Demand Refill Order</span>
+          <h2>Refill your home in a few clicks.</h2>
+          <p>Choose your preferred container, select doorstep delivery or station pickup, and track your rider in real time. Volume discounts apply automatically.</p>
+        </section>
+
+        <div class="order-flow-grid">
+          <!-- Step Forms -->
+          <div class="order-flow-steps">
+            <!-- Step 1: Station Selection (proximity filter lives inside) -->
+            ${renderOrderStationStepHtml(stations, selectedStation)}
+
+            <!-- Step 2: Container Size & Quantity -->
+            <div class="form-step-card">
+              <div class="step-header">
+                <span class="step-num">2</span>
+                <h3>Container Type & Quantity</h3>
+              </div>
+
+              <div class="container-option-grid">
+                <div class="container-option ${orderFormState.containerType === '5-gal-slim' ? 'selected' : ''}" onclick="selectContainer('5-gal-slim', ${selectedStation.pricePerGallon})">
+                  <strong>5-Gallon Slim Container</strong>
+                  <small>Standard dispenser slim bottle</small>
+                  <span class="opt-price">₱${selectedStation.pricePerGallon}.00 / refill</span>
+                </div>
+                <div class="container-option ${orderFormState.containerType === '5-gal-round' ? 'selected' : ''}" onclick="selectContainer('5-gal-round', ${selectedStation.pricePerGallon})">
+                  <strong>5-Gallon Round Container</strong>
+                  <small>Classic water cooler bottle</small>
+                  <span class="opt-price">₱${selectedStation.pricePerGallon}.00 / refill</span>
+                </div>
+              </div>
+
+              <label>Number of Containers / Gallons</label>
+              <div class="quantity-stepper">
+                <button type="button" class="stepper-btn" onclick="updateOrderQty(-1)">−</button>
+                <span class="stepper-value" id="order-qty-val">${orderFormState.quantity}</span>
+                <button type="button" class="stepper-btn" onclick="updateOrderQty(1)">+</button>
+                <small style="color:#64807b; margin-left:12px;">5–7 units: 10% OFF · 8+ units: 15% OFF</small>
+              </div>
+
+              <div class="form-field">
+                <label for="order-bottle-exchange">Empty Bottle Swap Option</label>
+                <select id="order-bottle-exchange" onchange="updateBottleExchange(this.value)">
+                  <option value="swap" ${orderFormState.bottleExchange === 'swap' ? 'selected' : ''}>I have empty bottles ready for 1-to-1 exchange (₱0 deposit)</option>
+                  <option value="new" ${orderFormState.bottleExchange === 'new' ? 'selected' : ''}>I need new containers (+₱160 deposit per container)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Step 3: Fulfillment & Address -->
+            <div class="form-step-card">
+              <div class="step-header">
+                <span class="step-num">3</span>
+                <h3>Fulfillment & Delivery Details</h3>
+              </div>
+
+              <div class="container-option-grid">
+                <div class="container-option ${orderFormState.fulfillment === 'delivery' ? 'selected' : ''}" onclick="selectFulfillment('delivery')">
+                  <strong class="option-heading"><span class="option-icon" aria-hidden="true">${fulfillmentIconSvg('delivery')}</span>Doorstep Delivery</strong>
+                  <small>Delivered by station rider</small>
+                  <span class="opt-price">₱15.00 delivery fee</span>
+                </div>
+                <div class="container-option ${orderFormState.fulfillment === 'pickup' ? 'selected' : ''}" onclick="selectFulfillment('pickup')">
+                  <strong class="option-heading"><span class="option-icon" aria-hidden="true">${fulfillmentIconSvg('pickup')}</span>Station Counter Pickup</strong>
+                  <small>Ready at express counter</small>
+                  <span class="opt-price">FREE (₱0)</span>
+                </div>
+              </div>
+
+              <div id="delivery-fields" style="margin-top:14px; display:${orderFormState.fulfillment === 'delivery' ? 'block' : 'none'};">
+                <div class="form-field">
+                  <label for="order-address">Delivery Address</label>
+                  <input type="text" id="order-address" value="${esc(orderFormState.deliveryAddress)}" oninput="orderFormState.deliveryAddress = this.value">
+                </div>
+                <div class="form-field">
+                  <label for="order-landmark">Barangay / Landmark / Instructions</label>
+                  <input type="text" id="order-landmark" value="${esc(orderFormState.landmark)}" placeholder="e.g. Beside Yellow Chapel, Blue Gate" oninput="orderFormState.landmark = this.value">
+                </div>
+                <div class="form-field">
+                  <label for="order-phone">Contact Mobile (for Rider SMS/Call)</label>
+                  <input type="text" id="order-phone" value="${esc(orderFormState.contactPhone)}" oninput="orderFormState.contactPhone = this.value">
+                </div>
+              </div>
+
+              <!-- Counter pickup: no address, no rider. Show where to go instead. -->
+              <div id="pickup-fields" class="pickup-fields" style="margin-top:14px; display:${orderFormState.fulfillment === 'pickup' ? 'block' : 'none'};">
+                <div class="pickup-station-card">
+                  <span class="eyebrow">Collect your refill here</span>
+                  <strong>${selectedStation.name}</strong>
+                  <small>${selectedStation.address}</small>
+                  <small class="pickup-station-phone">${selectedStation.phone || 'Ask the counter for assistance'}</small>
+                  <span class="pickup-hours">${selectedStation.hours || ''}</span>
+                </div>
+                <div class="form-field">
+                  <label for="order-pickup-phone">Contact Mobile (so the station can reach you)</label>
+                  <input type="text" id="order-pickup-phone" value="${esc(orderFormState.contactPhone)}" oninput="orderFormState.contactPhone = this.value">
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label for="order-notes">Notes for the station <span class="label-optional">(optional)</span></label>
+                <textarea id="order-notes" rows="3" maxlength="280" placeholder="e.g. Please have 2 containers ready. I'll arrive around 5 PM." oninput="orderFormState.notes = this.value">${esc(orderFormState.notes)}</textarea>
+                <small class="field-hint">Shared with station staff so they can prepare your refill correctly.</small>
+              </div>
+            </div>
+
+            <!-- Step 4: Payment Method -->
+            <div class="form-step-card">
+              <div class="step-header">
+                <span class="step-num">4</span>
+                <h3>Payment Method</h3>
+              </div>
+
+              <!-- Payment is derived from the fulfillment choice, not picked
+                   separately. Counter pickup has no delivery, so COD does not
+                   apply - the customer simply pays at the station. -->
+              <div class="payment-fixed">
+                <span class="payment-fixed-icon" aria-hidden="true">
+                  ${orderFormState.fulfillment === 'pickup'
+                    ? '<svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"/><path d="M9.5 21.5v-7h5v7"/></svg>'
+                    : '<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9v6M18 9v6"/></svg>'}
+                </span>
+                <div>
+                  <strong>${orderFormState.fulfillment === 'pickup' ? 'Pay at the station counter' : 'Cash on Delivery'}</strong>
+                  <small>${orderFormState.fulfillment === 'pickup'
+                    ? "You'll pay at the station when you pick up your refill."
+                    : 'Pay the rider in cash when your refill arrives.'}</small>
+                </div>
+              </div>
+              ${orderFormState.fulfillment === 'pickup' ? `
+                <p class="payment-note">No delivery fee applies to counter pickup. The station prepares your refill and collects ₱${orderTotals.total.toFixed(2)} at the counter.</p>
+              ` : ''}
+
+              <div style="margin-top:14px;">
+                <label class="check" style="display:flex;align-items:center;gap:8px;text-transform:none;cursor:pointer;">
+                  <input type="checkbox" id="order-apply-pts" onchange="toggleOrderPoints(this.checked)">
+                  <span>Apply AquaPoints Discount (Redeem 100 pts for ₱30.00 OFF)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sticky Summary Sidebar -->
+          <div>
+            <div class="summary-box" id="order-summary-box">
+              ${renderOrderSummaryHtml(selectedStation)}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // The locate button is recreated by every render, so re-binding here can
+      // never stack duplicate listeners.
+      bindOrderLocateButton();
+    }
+
+    function calculateOrderTotals(station) {
+      const rawSubtotal = orderFormState.containerPrice * orderFormState.quantity;
+      let discount = 0;
+      if (orderFormState.quantity >= 8) {
+        discount = rawSubtotal * 0.15; // 15% discount
+      } else if (orderFormState.quantity >= 5) {
+        discount = rawSubtotal * 0.10; // 10% discount
+      }
+
+      if (orderFormState.applyPointsVoucher) {
+        discount += 30.00;
+      }
+
+      const depositFee = orderFormState.bottleExchange === 'new' ? (160 * orderFormState.quantity) : 0;
+      const deliveryFee = orderFormState.fulfillment === 'delivery' ? 15.00 : 0.00;
+      const total = Math.max(0, rawSubtotal - discount + depositFee + deliveryFee);
+      const points = orderFormState.quantity * 10;
+
+      return { rawSubtotal, discount, depositFee, deliveryFee, total, points };
+    }
+
+    function renderOrderSummaryHtml(station) {
+      const calc = calculateOrderTotals(station);
+
+      return `
+        <h3>Order Summary</h3>
+        <p style="color:#64807b;font-size:13px;margin:0 0 14px;">Refill from <strong>${station.name}</strong></p>
+
+        <div class="summary-row">
+          <span>${orderFormState.quantity}× ${orderFormState.containerType === '5-gal-slim' ? '5-Gal Slim' : '5-Gal Round'} Refill</span>
+          <span>₱${calc.rawSubtotal.toFixed(2)}</span>
+        </div>
+
+        ${calc.discount > 0 ? `
+          <div class="summary-row discount">
+            <span>Volume / Rewards Discount</span>
+            <span>−₱${calc.discount.toFixed(2)}</span>
+          </div>
+        ` : ''}
+
+        ${calc.depositFee > 0 ? `
+          <div class="summary-row">
+            <span>New Container Deposit (×${orderFormState.quantity})</span>
+            <span>₱${calc.depositFee.toFixed(2)}</span>
+          </div>
+        ` : ''}
+
+        ${calc.deliveryFee > 0 ? `
+          <div class="summary-row">
+            <span>Fulfillment (Delivery)</span>
+            <span>₱${calc.deliveryFee.toFixed(2)}</span>
+          </div>
+        ` : `
+          <div class="summary-row">
+            <span>Fulfillment</span>
+            <span>Station counter pickup · FREE</span>
+          </div>
+        `}
+
+        ${orderFormState.quantity >= 5 ? `
+          <div class="discount-banner">
+            <span class="discount-banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.6 12.6 12 21.2 3.4 12.6A5 5 0 0 1 12 4a5 5 0 0 1 8.6 8.6Z"/></svg></span>
+            <span>${orderFormState.quantity >= 8 ? '15%' : '10%'} volume discount applied automatically!</span>
+          </div>
+        ` : ''}
+
+        <div class="summary-total">
+          <span>${orderFormState.fulfillment === 'pickup' ? 'Amount to Pay at Counter:' : 'Total to Pay:'}</span>
+          <em>₱${calc.total.toFixed(2)}</em>
+        </div>
+
+        <div class="points-earned-note">
+          <span class="points-earned-icon" aria-hidden="true">${uiIconSvg('star')}</span>
+          <span>You'll earn +${calc.points} AquaPoints with this refill!</span>
+        </div>
+
+        <button class="button wide" type="button" onclick="submitRefillOrder('${station.id}', '${station.name}')">
+          Confirm & Place Order →
+        </button>
+        <p style="font-size:11px;color:#78908d;text-align:center;margin:10px 0 0;">
+          ${orderFormState.fulfillment === 'pickup'
+            ? 'Pay in cash at the station counter · Safe & Sanitary Guarantee'
+            : 'Simulated Philippine Payment Gateway · Safe & Sanitary Guarantee'}
+        </p>
+      `;
+    }
+
+    function updateOrderStation(stationId) {
+      orderFormState.stationId = stationId;
+      renderOrderRefills(document.getElementById('main-content'), stationId);
+    }
+
+    function selectContainer(type, price) {
+      orderFormState.containerType = type;
+      orderFormState.containerPrice = price;
+      renderOrderRefills(document.getElementById('main-content'), orderFormState.stationId);
+    }
+
+    function updateOrderQty(delta) {
+      orderFormState.quantity = Math.max(1, Math.min(50, orderFormState.quantity + delta));
+      renderOrderRefills(document.getElementById('main-content'), orderFormState.stationId);
+    }
+
+    function updateBottleExchange(val) {
+      orderFormState.bottleExchange = val;
+      renderOrderRefills(document.getElementById('main-content'), orderFormState.stationId);
+    }
+
+    function selectFulfillment(mode) {
+      orderFormState.fulfillment = mode;
+      // Payment follows fulfillment. Switching delivery <-> pickup must never
+      // leave a method that is invalid for the new choice.
+      orderFormState.paymentMethod = paymentForFulfillment(mode);
+      renderOrderRefills(document.getElementById('main-content'), orderFormState.stationId);
+    }
+
+    function toggleOrderPoints(checked) {
+      orderFormState.applyPointsVoucher = checked;
+      renderOrderRefills(document.getElementById('main-content'), orderFormState.stationId);
+    }
+
+    async function submitRefillOrder(stationId, stationName) {
+      const calc = calculateOrderTotals({ pricePerGallon: orderFormState.containerPrice });
+      const isPickup = orderFormState.fulfillment === 'pickup';
+      const station = await AquaDashboard.fetchStationById(stationId);
+
+      // Client-side guard. placeRefillOrder() re-checks this on the data, but
+      // failing here gives the customer an immediate, readable message.
+      if (isPickup && orderFormState.paymentMethod !== AquaDashboard.PICKUP_PAYMENT_METHOD) {
+        return showToast('Counter pickup must be paid at the station. Please try again.');
+      }
+
+      const payload = {
+        stationId,
+        stationName,
+        stationAddress: station ? station.address : '',
+        userId: currentUser.userId,
+        customerName: currentUser.name,
+        containers: [{ type: orderFormState.containerType, label: orderFormState.containerType === '5-gal-slim' ? '5-Gallon Slim' : '5-Gallon Round', count: orderFormState.quantity, unitPrice: orderFormState.containerPrice }],
+        items: [{ type: orderFormState.containerType, label: orderFormState.containerType === '5-gal-slim' ? '5-Gallon Slim' : '5-Gallon Round', count: orderFormState.quantity, unitPrice: orderFormState.containerPrice }],
+        gallonsTotal: orderFormState.quantity,
+        fulfillment: orderFormState.fulfillment,
+        fulfillmentType: orderFormState.fulfillment,
+        deliveryAddress: orderFormState.deliveryAddress,
+        landmark: orderFormState.landmark,
+        contactPhone: orderFormState.contactPhone,
+        notes: orderFormState.notes,
+        paymentMethod: isPickup ? AquaDashboard.PICKUP_PAYMENT_METHOD : orderFormState.paymentMethod,
+        subtotal: calc.rawSubtotal,
+        discount: calc.discount,
+        deliveryFee: isPickup ? calc.depositFee : calc.deliveryFee + calc.depositFee,
+        total: calc.total
+      };
+
+      let res;
+      try {
+        res = await AquaDashboard.placeRefillOrder(payload);
+      } catch (error) {
+        return showToast(error.message || 'That order could not be placed. Please try again.');
+      }
+
+      if (res.success) {
+        orderFormState.notes = '';
+        if (isPickup) {
+          openModal(renderPickupConfirmationHtml(res.order));
+        } else {
+          openModal(`
+            <div style="text-align:center;">
+              <span class="confirm-hero-icon confirm-hero-icon-success" aria-hidden="true">
+                ${uiIconSvg('heart')}
+              </span>
+              <h3 style="margin:0 0 8px;font:600 24px 'Fraunces',serif;color:var(--navy);">Order #${res.order.id} Confirmed!</h3>
+              <p style="color:#52706e;font-size:14px;margin-bottom:20px;">
+                Thank you! Your water refill order has been received by <strong>${stationName}</strong>. You earned <strong>+${res.order.pointsEarned} AquaPoints</strong>.
+              </p>
+              <div class="glass-card" style="text-align:left;margin-bottom:20px;font-size:13px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span style="color:#64807b;">Fulfillment:</span>
+                  <strong>Doorstep Delivery</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span style="color:#64807b;">Total Paid:</span>
+                  <strong>₱${res.order.total.toFixed(2)} (${res.order.paymentMethod})</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span style="color:#64807b;">Initial Status:</span>
+                  <span class="pill pending">Pending Refill</span>
+                </div>
+              </div>
+              <button class="button wide" onclick="closeModal(); switchSection('order-history');">
+                Track Order Live →
+              </button>
+            </div>
+          `);
+        }
+      }
+    }
+
+    /** Confirmation screen shown after a counter-pickup order is placed. */
+    function renderPickupConfirmationHtml(order) {
+      const itemLabel = (order.items && order.items[0] && order.items[0].label) || '5-Gallon Refill';
+      return `
+        <div style="text-align:center;">
+          <span class="confirm-hero-icon confirm-hero-icon-pickup" aria-hidden="true">
+            ${fulfillmentIconSvg('pickup')}
+          </span>
+          <h3 style="margin:0 0 8px;font:600 24px 'Fraunces',serif;color:var(--navy);">
+            Order #${order.id} Received!
+          </h3>
+          <p style="color:#52706e;font-size:14px;margin-bottom:20px;">
+            The station has been notified and will start preparing your refill. You earned
+            <strong>+${order.pointsEarned} AquaPoints</strong>.
+          </p>
+
+          <div class="glass-card pickup-confirm-card" style="text-align:left;margin-bottom:20px;font-size:13px;">
+            <div class="pickup-confirm-row">
+              <span>Order number</span>
+              <strong>${order.id}</strong>
+            </div>
+            <div class="pickup-confirm-row">
+              <span>Station</span>
+              <strong>${order.stationName}</strong>
+            </div>
+            <div class="pickup-confirm-row">
+              <span>Address</span>
+              <strong>${order.stationAddress || 'See station details'}</strong>
+            </div>
+            <div class="pickup-confirm-row">
+              <span>Items</span>
+              <strong>${order.gallonsTotal}× ${itemLabel}</strong>
+            </div>
+            <div class="pickup-confirm-row">
+              <span>Current status</span>
+              <span class="pill pending">New · Preparing soon</span>
+            </div>
+            <div class="pickup-confirm-total">
+              <span>Amount to pay at the counter</span>
+              <strong>₱${order.total.toFixed(2)}</strong>
+            </div>
+            <p class="pickup-confirm-note">
+              Payment is collected in cash when you collect your refill. No delivery fee applies.
+            </p>
+          </div>
+
+          <button class="button wide" onclick="closeModal(); switchSection('order-history');">
+            Track My Pickup →
+          </button>
+        </div>
+      `;
+    }
+
+    // 3. ORDER HISTORY & 4-STAGE TRACKING VIEW
+    async function renderOrderHistory(container) {
+      container.innerHTML = `<div class="empty-state">Loading order history...</div>`;
+      const orders = await AquaDashboard.fetchOrders();
+
+      container.innerHTML = `
+        <section class="section-hero">
+          <span class="eyebrow">Real-Time Refill Tracking</span>
+          <h2>Every order, transparently tracked.</h2>
+          <p>Monitor your water orders through each stage of preparation, dispatch, and completion. Advance order status to test live pipeline state transitions.</p>
+        </section>
+
+        <div id="orders-list">
+          ${orders.length ? orders.map(order => renderOrderTrackingCardHtml(order)).join('') : `
+            <div class="empty-state">
+              <p>You haven't placed any water orders yet.</p>
+              <button class="button" onclick="switchSection('order-refills')">Order Your First Refill →</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderOrderTrackingCardHtml(order) {
+      // Counter pickup runs its own pipeline; delivery keeps the existing one.
+      const isPickup = AquaDashboard.isPickupOrder(order);
+      const isCancelled = order.status === 'cancelled';
+      const isCompleted = order.status === 'completed' || isCancelled;
+      const stages = isPickup
+        ? [...AquaDashboard.PICKUP_STATUS_FLOW]
+        : ['pending', 'confirmed', 'out-for-delivery', 'completed'];
+      const stageLabels = isPickup
+        ? ['New', 'Preparing', 'Ready for pickup', 'Collected & paid']
+        : ['Pending', 'Confirmed', 'Out for delivery', 'Completed'];
+      const stageHints = isPickup
+        ? ['Order placed', 'Station refilling', 'Collect at counter', 'Picked up']
+        : ['Order placed', 'Station refilling', 'In transit', 'Delivered'];
+
+      const currentIdx = stages.indexOf(order.status);
+      const percentFill = Math.max(0, Math.min(3, currentIdx)) / 3 * 100;
+      const itemLabel = (order.items && order.items[0] && order.items[0].label) || '5-Gallon Water Refill';
+      const isUnpaid = order.paymentMethod === AquaDashboard.PICKUP_PAYMENT_METHOD && order.paymentStatus !== 'paid';
+
+      return `
+        <article class="order-tracking-card">
+          <div class="tracking-header">
+            <div>
+              <span class="eyebrow">Order #${order.id} · ${order.stationName}</span>
+              <h3 style="margin:4px 0;font-size:18px;color:var(--navy);">${order.gallonsTotal}× ${itemLabel}</h3>
+              <small style="color:#78908d;">Placed ${new Date(order.createdAt).toLocaleDateString()} · ${order.paymentMethod === AquaDashboard.PICKUP_PAYMENT_METHOD ? 'Pay at counter' : order.paymentMethod}</small>
+            </div>
+            <div style="text-align:right;">
+              <span class="pill ${order.status}">${order.status.replace(/_/g, ' ').toUpperCase()}</span>
+              ${isUnpaid ? '<span class="pill unpaid" style="display:block;margin-top:6px;">Unpaid · pay at counter</span>' : ''}
+              <strong style="display:block;font-size:16px;color:var(--teal);margin-top:6px;">₱${order.total.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          ${order.notes ? `<p class="tracking-notes"><strong>Your note:</strong> ${order.notes}</p>` : ''}
+
+          <!-- 4-Stage Status Pipeline -->
+          <div class="status-pipeline">
+            <div class="pipeline-line-track">
+              <div class="pipeline-line-fill" style="width: ${percentFill}%;"></div>
+            </div>
+
+            ${stageLabels.map((label, index) => `
+              <div class="pipeline-step ${index <= currentIdx ? 'done' : ''} ${index === currentIdx ? 'current' : ''}">
+                <div class="pipeline-node">${index < currentIdx ? '✓' : index + 1}</div>
+                <span class="pipeline-label">${label}</span>
+                <span class="pipeline-time">${order.timeline && order.timeline[index] && order.timeline[index].done ? order.timeline[index].time : stageHints[index]}</span>
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- Demo Advance Button to test status transitions -->
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #eef2ee;padding-top:14px;margin-top:14px;flex-wrap:wrap;gap:10px;">
+            <small class="tracking-destination">
+              <span class="tracking-destination-icon" aria-hidden="true">${fulfillmentIconSvg(isPickup ? 'pickup' : 'delivery')}</span>
+              ${isPickup
+                ? `Collect at: <strong>${order.stationAddress || order.stationName}</strong>`
+                : `Destination: <strong>${order.deliveryAddress || 'Station Pickup Counter'}</strong>`}
+            </small>
+
+            <div style="display:flex;gap:8px;">
+              ${!isCompleted ? (
+                // Pickup status is driven by station staff, so no demo advance here.
+                isPickup
+                  ? `<span class="pill slate">Awaiting station</span>`
+                  : `<button class="button small amber" type="button" onclick="handleAdvanceStatus('${order.id}')">
+                      <span class="button-icon" aria-hidden="true">${uiIconSvg('bolt')}</span>
+                      Advance Status Demo (${(stages[currentIdx + 1] || '').replace(/-/g, ' ') || 'Complete'})
+                    </button>`
+              ) : `
+                <span class="pill completed">${isCancelled ? 'Cancelled' : isPickup ? '✓ Collected & Paid' : '✓ Refill Delivered & Paid'}</span>
+              `}
+              <button class="button small outline" type="button" onclick="showOrderDetailsModal('${order.id}')">
+                View Receipt
+              </button>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    async function handleAdvanceStatus(orderId) {
+      const updated = await AquaDashboard.advanceOrderStatus(orderId);
+      if (updated) {
+        showToast(`Order #${orderId} status advanced to: ${updated.status.toUpperCase()}`);
+        renderOrderHistory(document.getElementById('main-content'));
+      }
+    }
+
+    async function showOrderDetailsModal(orderId) {
+      const orders = await AquaDashboard.fetchOrders();
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return;
+
+      openModal(`
+        <div class="modal-header">
+          <h3>Order #${order.id} Receipt</h3>
+          <button class="close-btn" onclick="closeModal()">×</button>
+        </div>
+        <div style="font-size:13.5px;">
+          <p><strong>Station:</strong> ${order.stationName}</p>
+          <p><strong>Fulfillment:</strong> ${order.fulfillment.toUpperCase()} · ${order.deliveryAddress}</p>
+          <p><strong>Payment Method:</strong> ${order.paymentMethod}</p>
+          <hr style="border:0;border-top:1px solid #e2ece7;margin:12px 0;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span>Subtotal (${order.gallonsTotal} gal)</span>
+            <span>₱${order.subtotal.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;color:var(--success);">
+            <span>Discount</span>
+            <span>−₱${order.discount.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span>Delivery / Deposit Fee</span>
+            <span>₱${order.deliveryFee.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:16px;color:var(--navy);margin-top:10px;">
+            <span>Total Paid</span>
+            <span>₱${order.total.toFixed(2)}</span>
+          </div>
+        </div>
+      `);
+    }
+
+    // 4. SUBSCRIPTIONS VIEW
+    async function renderSubscriptions(container) {
+      container.innerHTML = `<div class="empty-state">Loading subscription plans...</div>`;
+      const subs = await AquaDashboard.fetchSubscriptions();
+
+      container.innerHTML = `
+        <section class="section-hero">
+          <span class="eyebrow">Recurring Refill Automation</span>
+          <h2>Never run out of water again.</h2>
+          <p>Register recurring refill plans with automatic 10% subscription discounts. Pause, edit, or cancel your schedule at any time with zero penalty fees.</p>
+        </section>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h3 style="margin:0;font-size:20px;color:var(--navy);">Active Household Plans</h3>
+          <button class="button" onclick="openNewSubscriptionModal()">+ Register New Subscription</button>
+        </div>
+
+        <div class="plan-grid">
+          ${subs.length ? subs.map(sub => `
+            <div class="plan-card">
+              <div>
+                <span class="plan-frequency">${sub.frequencyLabel}</span>
+                <span class="pill ${sub.status === 'active' ? 'completed' : (sub.status === 'paused' ? 'orange' : 'slate')}" style="float:right;">
+                  ${sub.status.toUpperCase()}
+                </span>
+                <h3 style="margin:10px 0 6px;color:var(--navy);font-size:18px;">${sub.gallonsPerRefill}× ${sub.containerType}</h3>
+                <small style="color:#64807b;display:block;margin-bottom:12px;">${sub.stationName}</small>
+                
+                <div class="glass-card" style="padding:12px;margin-bottom:14px;font-size:12.5px;">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#64807b;">Billing Rate:</span>
+                    <strong>₱${sub.estimatedTotal.toFixed(2)} / cycle <small style="color:var(--success);">(10% OFF)</small></strong>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#64807b;">Next Scheduled Refill:</span>
+                    <strong>${sub.nextRefillDate}</strong>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#64807b;">Delivery:</span>
+                    <span>${sub.deliveryAddress.split(',')[0]}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:8px;border-top:1px solid #eef2ee;padding-top:14px;">
+                ${sub.status === 'active' ? `
+                  <button class="button small outline" onclick="handleUpdateSub('${sub.id}', 'paused')">Pause Plan</button>
+                ` : `
+                  <button class="button small amber" onclick="handleUpdateSub('${sub.id}', 'active')">Resume Plan</button>
+                `}
+                <button class="button small outline" style="color:var(--danger);border-color:#fca5a5;" onclick="handleUpdateSub('${sub.id}', 'cancelled')">Cancel</button>
+              </div>
+            </div>
+          `).join('') : `
+            <div class="empty-state" style="grid-column:1/-1;">
+              <p>No active subscription plans.</p>
+              <button class="button" onclick="openNewSubscriptionModal()">Start a 10% Discount Refill Plan →</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    async function handleUpdateSub(subId, newStatus) {
+      const res = await AquaDashboard.updateSubscriptionStatus(subId, newStatus);
+      if (res.success) {
+        showToast(`Subscription ${newStatus.toUpperCase()} successfully.`);
+        renderSubscriptions(document.getElementById('main-content'));
+      }
+    }
+
+    async function openNewSubscriptionModal() {
+      const stations = await AquaDashboard.fetchStations();
+      openModal(`
+        <div class="modal-header">
+          <h3>Create Recurring Refill Plan</h3>
+          <button class="close-btn" onclick="closeModal()">×</button>
+        </div>
+        <form id="new-sub-form" onsubmit="submitNewSubscription(event)">
+          <label>Select Station</label>
+          <select id="sub-station" required style="margin-bottom:12px;">
+            ${stations.map(s => `<option value="${s.id}|${s.name}|${s.pricePerGallon}">${s.name} (₱${s.pricePerGallon}/gal)</option>`).join('')}
+          </select>
+
+          <label>Refill Frequency</label>
+          <select id="sub-freq" required style="margin-bottom:12px;">
+            <option value="weekly">Every Week (Monday Morning)</option>
+            <option value="biweekly">Every 2 Weeks</option>
+            <option value="monthly">Every Month</option>
+          </select>
+
+          <label>Gallons / Containers per Refill</label>
+          <input type="number" id="sub-gallons" min="1" max="20" value="2" required style="margin-bottom:12px;">
+
+          <label>Delivery Address</label>
+          <input type="text" id="sub-address" value="${currentUser?.address || 'San Jose District, Pagadian City'}" required style="margin-bottom:18px;">
+
+          <button class="button wide" type="submit">Activate Refill Plan (10% Discount) →</button>
+        </form>
+      `);
+    }
+
+    async function submitNewSubscription(e) {
+      e.preventDefault();
+      const [stationId, stationName, priceStr] = document.getElementById('sub-station').value.split('|');
+      const gallons = parseInt(document.getElementById('sub-gallons').value, 10);
+      const frequency = document.getElementById('sub-freq').value;
+      const address = document.getElementById('sub-address').value;
+      const basePrice = parseFloat(priceStr) * gallons;
+
+      const res = await AquaDashboard.createSubscription({
+        stationId,
+        stationName,
+        frequency,
+        gallonsPerRefill: gallons,
+        basePrice,
+        deliveryAddress: address
+      });
+
+      if (res.success) {
+        closeModal();
+        showToast('Recurring refill plan created!');
+        renderSubscriptions(document.getElementById('main-content'));
+      }
+    }
+
+    // 5. LOYALTY & REWARDS VIEW
+    async function renderLoyalty(container) {
+      container.innerHTML = `<div class="empty-state">Loading loyalty points...</div>`;
+      const loyalty = await AquaDashboard.fetchLoyalty();
+
+      container.innerHTML = `
+        <div class="loyalty-hero-card">
+          <div>
+            <span class="pill orange">AquaPoints Loyalty Program</span>
+            <div class="loyalty-balance">
+              <b>${loyalty.balance} <small style="font-size:18px;color:#a9d8cd;">pts</small></b>
+            </div>
+            <p style="margin:0;color:#c7e1dc;font-size:13.5px;">
+              Tier: <strong>${loyalty.tier}</strong> · 10 pts earned for every 5-gallon refill completed.
+            </p>
+          </div>
+          <div style="text-align:right;">
+            <span class="pill" style="background:rgba(255,255,255,0.15);color:#fff;">₱${(loyalty.balance * 0.30).toFixed(2)} Refill Value</span>
+          </div>
+        </div>
+
+        <h3 style="margin:24px 0 12px;font-size:20px;color:var(--navy);">Redeemable Rewards & Vouchers</h3>
+        <div class="reward-grid">
+          ${loyalty.rewardsCatalog.map(reward => `
+            <div class="reward-card">
+              <div>
+                <span class="pill blue">${reward.category}</span>
+                <h4 style="margin:8px 0 4px;font-size:16px;color:var(--navy);">${reward.name}</h4>
+                <p style="color:#64807b;font-size:12px;margin:0 0 10px;">${reward.description}</p>
+                <div class="reward-cost">
+                  <span>★ ${reward.pointsCost} Points</span>
+                </div>
+              </div>
+              <button class="button small ${loyalty.balance >= reward.pointsCost ? 'amber' : 'outline'}" style="margin-top:14px;" 
+                ${loyalty.balance < reward.pointsCost ? 'disabled' : ''} 
+                onclick="handleRedeemReward('${reward.id}')">
+                ${loyalty.balance >= reward.pointsCost ? 'Redeem Reward →' : 'Need More Points'}
+              </button>
+            </div>
+          `).join('')}
+        </div>
+
+        <h3 style="margin:30px 0 14px;font-size:20px;color:var(--navy);">Points Activity History</h3>
+        <div class="glass-panel" style="padding:16px;">
+          ${loyalty.history.map(item => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eef2ee;">
+              <div>
+                <strong style="color:var(--navy);font-size:13.5px;">${item.title}</strong>
+                <small style="display:block;color:#78908d;font-size:11.5px;">${item.date}</small>
+              </div>
+              <strong style="color:${item.points > 0 ? 'var(--success)' : 'var(--danger)'};font-size:14px;">
+                ${item.points > 0 ? '+' : ''}${item.points} pts
+              </strong>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    async function handleRedeemReward(rewardId) {
+      const res = await AquaDashboard.redeemLoyaltyReward(rewardId);
+      if (res.success) {
+        openModal(`
+          <div style="text-align:center;">
+            <span class="confirm-hero-icon confirm-hero-icon-success" aria-hidden="true">
+              ${uiIconSvg('gift')}
+            </span>
+            <h3 style="margin:0 0 6px;color:var(--navy);">${res.reward.name} Redeemed!</h3>
+            <p style="color:#52706e;font-size:13.5px;">Your promo voucher code is ready to use on your next order:</p>
+            <div style="padding:12px;border:2px dashed var(--teal);border-radius:12px;background:var(--mint);font-size:20px;font-weight:bold;color:var(--teal);letter-spacing:0.1em;margin:16px 0;">
+              ${res.reward.code}
+            </div>
+            <button class="button wide" onclick="closeModal(); switchSection('loyalty');">Done</button>
+          </div>
+        `);
+      } else {
+        showToast(res.error);
+      }
+    }
+
+    // 6. NOTIFICATIONS VIEW
+    async function renderNotifications(container) {
+      const notifs = await AquaDashboard.fetchNotifications();
+      container.innerHTML = `
+        <section class="section-hero">
+          <span class="eyebrow">Activity & Alerts</span>
+          <h2>Your AquaTracker feed.</h2>
+          <p>Stay informed about refill deliveries, scheduled subscription renewals, and local station promotions.</p>
+        </section>
+
+        <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+          <button class="button small outline" onclick="handleMarkAllRead()">Mark all as read</button>
+        </div>
+
+        <div class="glass-panel" style="padding:10px 20px;">
+          ${notifs.length ? notifs.map(n => `
+            <div style="display:flex;gap:14px;align-items:flex-start;padding:16px 0;border-bottom:1px solid #eef2ee;opacity:${n.read ? '0.75' : '1'};">
+              ${notifBadge(n.type)}
+              <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;gap:12px;">
+                  <strong style="color:var(--navy);font-size:14px;">${esc(n.title)}</strong>
+                  <small style="color:#78908d;white-space:nowrap;">${esc(n.time)}</small>
+                </div>
+                <p style="margin:4px 0 0;color:#52706e;font-size:13px;">${esc(n.message)}</p>
+              </div>
+              ${n.read ? '' : '<span class="notif-dot" title="Unread"></span>'}
+            </div>
+          `).join('') : `<div class="empty-state">No notifications.</div>`}
+        </div>
+      `;
+    }
+
+    async function handleMarkAllRead() {
+      await AquaDashboard.markAllNotificationsRead();
+      document.getElementById('notif-badge').style.display = 'none';
+      showToast('All notifications marked as read.');
+      renderNotifications(document.getElementById('main-content'));
+    }
+
+    // 7. PROFILE & ACCOUNT SETTINGS
+    async function renderProfile(container) {
+      const user = await AquaAuth.getCurrentUser();
+      if (!user) throw new Error("Authenticated customer profile is unavailable.");
+      const profileKey = `aquatracker_profile_customer_${user.email}`;
+      let savedProfile = {};
+      try {
+        savedProfile = JSON.parse(localStorage.getItem(profileKey) || "{}");
+      } catch (error) {
+        console.error("Invalid saved customer profile:", error);
+        localStorage.removeItem(profileKey);
+      }
+      const profile = { ...user, ...savedProfile };
+      const demoAddresses = AquaRoles.DEMO_ACCOUNTS.customer.savedAddresses || [];
+      const addresses = user.savedAddresses?.length
+        ? user.savedAddresses
+        : demoAddresses;
+      container.innerHTML = `
+        <section class="section-hero">
+          <span class="eyebrow">Customer Account</span>
+          <h2>Profile & Preferences</h2>
+          <p>Manage your delivery address book and account security settings.</p>
+        </section>
+
+        <div class="order-flow-grid">
+          <div>
+            <!-- Personal Info Card -->
+            <div class="form-step-card">
+              <h3 style="margin:0 0 16px;color:var(--navy);">Personal Information</h3>
+              <form id="profile-form" onsubmit="handleSaveProfile(event)">
+                <div style="margin-bottom:12px;">
+                  <label>Full Name</label>
+                  <input type="text" id="prof-name" value="${profile.name}" required>
+                </div>
+                <div style="margin-bottom:12px;">
+                  <label>Email Address</label>
+                  <input type="email" id="prof-email" value="${profile.email}" required>
+                </div>
+                <div style="margin-bottom:16px;">
+                  <label>Mobile Number (PH Format)</label>
+                  <input type="text" id="prof-phone" value="${profile.phone || '+63 917 555 4321'}" required>
+                </div>
+                <button class="button" type="submit">Save Changes</button>
+              </form>
+            </div>
+
+            <!-- Address Book Card -->
+            <div class="form-step-card">
+              <h3 style="margin:0 0 16px;color:var(--navy);">Address Book</h3>
+              <div style="display:grid;gap:10px;margin-bottom:16px;">
+                ${addresses.map(addr => `
+                  <div class="glass-card" style="padding:12px;">
+                    <strong>${addr.label} ${addr.isDefault ? '<span class="pill" style="font-size:9px;">Default</span>' : ''}</strong>
+                    <p style="margin:4px 0 0;color:#64807b;font-size:12.5px;">${addr.address}</p>
+                  </div>
+                `).join('')}
+              </div>
+              <button class="button small outline" onclick="showToast('Add new address is available in full release.')">+ Add New Delivery Address</button>
+            </div>
+          </div>
+
+          <div>
+            <!-- Security & Password -->
+            <div class="form-step-card">
+              <h3 style="margin:0 0 16px;color:var(--navy);">Security Settings</h3>
+              <div style="margin-bottom:12px;">
+                <label>Update Password</label>
+                <input type="password" placeholder="New password...">
+              </div>
+              <button class="button small outline" onclick="showToast('Password updated (simulation).')">Update Password</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function handleSaveProfile(e) {
+      e.preventDefault();
+      const user = await AquaAuth.getCurrentUser();
+      if (!user) throw new Error("Authenticated customer profile is unavailable.");
+      const profile = {
+        name: document.getElementById('prof-name').value.trim(),
+        email: document.getElementById('prof-email').value.trim(),
+        phone: document.getElementById('prof-phone').value.trim(),
+      };
+      if (!profile.name || !profile.email) {
+        showToast('Name and email are required.');
+        return;
+      }
+      localStorage.setItem(
+        `aquatracker_profile_customer_${user.email}`,
+        JSON.stringify(profile)
+      );
+      showToast('Prototype profile saved on this device.');
+    }
+
+    function protectRender(name, render) {
+      return async function (container, ...args) {
+        try {
+          return await render.call(this, container, ...args);
+        } catch (error) {
+          console.error(`Error rendering ${name}:`, error);
+          container.innerHTML =
+            `<div class="empty-state">Couldn't load data — see console</div>`;
+        }
+      };
+    }
+
+    function protectHtmlRender(name, render) {
+      return function (...args) {
+        try {
+          return render.apply(this, args);
+        } catch (error) {
+          console.error(`Error rendering ${name}:`, error);
+          return `<div class="empty-state">Couldn't load data — see console</div>`;
+        }
+      };
+    }
+
+    renderStationDetailModalHtml = protectHtmlRender(
+      'station detail modal',
+      renderStationDetailModalHtml
+    );
+    renderStationCardsHtml = protectHtmlRender(
+      'station cards',
+      renderStationCardsHtml
+    );
+    renderOrderSummaryHtml = protectHtmlRender(
+      'order summary',
+      renderOrderSummaryHtml
+    );
+    renderOrderTrackingCardHtml = protectHtmlRender(
+      'order tracking card',
+      renderOrderTrackingCardHtml
+    );
+    renderStationFinder = protectRender('station finder', renderStationFinder);
+    renderOrderRefills = protectRender('refill ordering', renderOrderRefills);
+    renderOrderHistory = protectRender('order history', renderOrderHistory);
+    renderSubscriptions = protectRender('subscriptions', renderSubscriptions);
+    renderLoyalty = protectRender('loyalty', renderLoyalty);
+    renderNotifications = protectRender('notifications', renderNotifications);
+    renderProfile = protectRender('profile', renderProfile);
+  </script>
+</body>
+</html>

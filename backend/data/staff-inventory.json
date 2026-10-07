@@ -1,0 +1,30 @@
+[
+  {
+    "id": "five-gallon",
+    "name": "5-gallon containers",
+    "quantity": 42,
+    "reorderAt": 15,
+    "unit": "containers"
+  },
+  {
+    "id": "sealed-caps",
+    "name": "Sealed caps",
+    "quantity": 86,
+    "reorderAt": 30,
+    "unit": "caps"
+  },
+  {
+    "id": "sanitizer",
+    "name": "Sanitizer solution",
+    "quantity": 8,
+    "reorderAt": 4,
+    "unit": "bottles"
+  },
+  {
+    "id": "delivery-crates",
+    "name": "Delivery crates",
+    "quantity": 12,
+    "reorderAt": 5,
+    "unit": "crates"
+  }
+]

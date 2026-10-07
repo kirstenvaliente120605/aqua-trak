@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#073b4c">
+  <title>AquaTracker — Station Staff Workspace</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="staff-dashboard">
+
+  <div class="app-shell" id="app">
+    <aside class="sidebar" id="sidebar">
+      <a class="mark mark-compact" href="/">
+        <span class="mark-icon">≈</span>
+        <span>Aqua<span class="mark-accent">Tracker</span></span>
+      </a>
+
+      <div class="account-chip" id="user-chip">
+        <span class="avatar" id="user-avatar">DC</span>
+        <div>
+          <strong id="user-name">Dani Cruz</strong>
+          <small id="user-role-label">Station Operations Staff</small>
+        </div>
+      </div>
+
+      <nav class="side-nav" id="side-nav">
+        <!-- Rendered dynamically by roles.js -->
+      </nav>
+
+      <a class="signout" href="#" onclick="AquaAuth.logout(); return false;">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+        Sign out
+      </a>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div class="mobile-menu">
+          <button type="button" id="mobile-toggle" aria-label="Toggle Navigation">☰</button>
+        </div>
+
+        <div>
+          <small id="view-eyebrow">Staff Workspace</small>
+          <h1 id="view-title">Shift Operations</h1>
+        </div>
+
+        <div class="top-actions">
+          <div class="top-account">
+            <strong id="top-name">Dani Cruz</strong>
+            <small id="top-subtitle">ClearSpring Water Hub</small>
+          </div>
+          <span class="avatar pale" id="top-avatar">DC</span>
+        </div>
+      </header>
+
+      <main class="content" id="main-content">
+        <!-- Dynamic Section Views injected here via staff-dashboard.js -->
+      </main>
+    </section>
+  </div>
+
+  <!-- Shared Modal Container -->
+  <div class="glass-modal-backdrop" id="modal-backdrop">
+    <div class="glass-modal" id="modal-content">
+      <!-- Injected modal body -->
+    </div>
+  </div>
+
+  <script src="/js/roles.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <script src="/js/staff.js"></script>
+  <script src="/js/store.js"></script>
+  <script src="/js/staff-dashboard.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 1. Enforce Role Guard: Only 'staff' role allowed
+      const user = await AquaAuth.requireRole('staff');
+      if (!user) return;
+
+      AquaCommon.initStore();
+      AquaDashboard.initDataStores();
+      setUser(user);
+      // 2. Hydrate user info & dynamic nav
+      hydrateUserDisplay(user);
+      renderNavigation(user);
+      // 4. Re-run the pickup poll now that the nav exists, so the
+      //    "new pickup orders" count badge can be drawn.
+      startPickupPolling();
+
+      document.getElementById('mobile-toggle')?.addEventListener('click', () => {
+        document.getElementById('sidebar')?.classList.toggle('open');
+      });
+
+      // 3. Open requested section or the order queue.
+      switchSection(window.location.hash.slice(1) || 'station-orders');
+    });
+
+    function hydrateUserDisplay(user) {
+      document.getElementById('user-name').textContent = user.name;
+      document.getElementById('top-name').textContent = user.name;
+      const initials = (user.name || 'ST').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+      document.getElementById('user-avatar').textContent = initials;
+      document.getElementById('top-avatar').textContent = initials;
+      document.getElementById('user-role-label').textContent = user.subtitle || 'Station Staff';
+      document.getElementById('top-subtitle').textContent = user.subtitle || 'Station Staff';
+    }
+
+    function renderNavigation(user) {
+      const navContainer = document.getElementById('side-nav');
+      const navItems = AquaRoles.getAuthorizedNav(user);
+      navContainer.innerHTML = navItems.map(item => `
+        <button type="button" data-section="${item.section}" onclick="switchSection('${item.section}')">
+          ${getSvgIcon(item.icon)}
+          <span>${item.label}</span>
+        </button>
+      `).join('');
+    }
+
+    function getSvgIcon(name) {
+      const icons = {
+        'calendar': '<svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+        'shopping-bag': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+        'layers': '<svg class="nav-icon" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 12 22 17"/><polyline points="2 22 12 17 22 22"/></svg>',
+        'message-circle': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-5.2 7.7l-7-7a8.38 8.38 0 0 1-5.2-7.7a8.38 8.38 0 0 1 8.38-8.38 8.38 8.38 0 0 1 5.2 7.7z"/></svg>',
+        'user': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+        'store': '<svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 9.5 5 4h14l2 5.5"/><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 4 0 2.5 2.5 0 0 0 4 0 2.5 2.5 0 0 0 5 0"/><path d="M9 21v-5h6v5"/></svg>'
+      };
+      return icons[name] || icons['shopping-bag'];
+    }
+  </script>
+</body>
+</html>
