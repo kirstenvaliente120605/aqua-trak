@@ -9,6 +9,10 @@
 
   let currentUser = null;
   let currentSection = 'overview';
+  let selectedPeriod = "7d";
+  let ordersFilter = null;
+  const inventoryReorderAt = { caps: 30, seals: 15, bottles: 4 };
+  const inventoryLabels = { caps: "Sanitary caps", seals: "Bottle seals", bottles: "Refill bottles" };
 
   function getInitials(name) {
     return String(name || "AquaTracker")
@@ -22,9 +26,10 @@
 
   function statusClass(status) {
     const normalized = String(status || "").toLowerCase();
+    if (normalized.includes("reject") || normalized.includes("cancel") || normalized.includes("expired")) return "slate";
+    if (normalized.includes("out for delivery")) return "out-for-delivery";
     if (normalized.includes("deliver") || normalized.includes("complete") || normalized === "active" || normalized === "approved") return "completed";
     if (normalized.includes("prepar") || normalized.includes("progress") || normalized.includes("ready") || normalized.includes("scheduled")) return "out-for-delivery";
-    if (normalized.includes("reject") || normalized.includes("cancel") || normalized.includes("expired")) return "slate";
     if (normalized.includes("pending") || normalized.includes("new")) return "pending";
     return "blue";
   }
@@ -46,8 +51,327 @@
       </section>`;
   }
 
-  async function switchSection(sectionId) {
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[character]);
+  }
+
+  function periodWindow(period = selectedPeriod, now = new Date()) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (period === "today") {
+      return { start: today, end: now, previousStart: new Date(today.getTime() - 86400000), previousEnd: today };
+    }
+    if (period === "7d" || period === "30d") {
+      const days = period === "7d" ? 7 : 30;
+      const start = new Date(today.getTime() - (days - 1) * 86400000);
+      return {
+        start, end: now,
+        previousStart: new Date(start.getTime() - days * 86400000),
+        previousEnd: start,
+      };
+    }
+    return { start: new Date(0), end: now, previousStart: null, previousEnd: null };
+  }
+
+  function dateInWindow(value, start, end) {
+    const date = new Date(value);
+    return !Number.isNaN(date.getTime()) && date >= start && date <= end;
+  }
+
+  function isRevenueOrder(order) {
+    const status = String(order.status || "").toLowerCase();
+    return !status.includes("cancel") &&
+      (status === "paid" || status === "delivered" || String(order.paymentStatus || "").toLowerCase() === "paid");
+  }
+
+  function getRevenue(order) {
+    const total = Number(order.total);
+    return isRevenueOrder(order) && Number.isFinite(total) ? total : 0;
+  }
+
+  function getFulfillment(order) {
+    return String(order.fulfillment || order.fulfillmentType || "").toLowerCase();
+  }
+
+  function isLowStock(item, quantity) {
+    const threshold = inventoryReorderAt[String(item).toLowerCase()];
+    return threshold !== undefined && Number(quantity) <= threshold;
+  }
+
+  function isWaitingOrder(order) {
+    return ["new", "new order", "preparing"].includes(String(order.status || "").toLowerCase());
+  }
+
+  function metricComparison(current, previous, hasPrevious, label) {
+    if (!hasPrevious || previous === 0) return "No prior data yet";
+    const change = Math.round(((current - previous) / previous) * 100);
+    const direction = change > 0 ? "+" : "";
+    const tone = change > 0 ? "positive" : change < 0 ? "negative" : "neutral";
+    return `<span class="${tone}">${direction}${change}% vs ${label}</span>`;
+  }
+
+  function widgetError(name, error) {
+    console.error(`Error rendering overview ${name}:`, error);
+    return `<div class="overview-widget-error" role="status">Couldn't load ${escapeHtml(name)}.</div>`;
+  }
+
+  async function renderOverviewHero() {
+    try {
+      const settings = await global.AquaOwner.fetchSettings();
+      const now = new Date();
+      const hour = now.getHours();
+      const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+      const firstName = String(currentUser.name || "there").trim().split(/\s+/)[0];
+      const stationName = settings?.name || currentUser.station || "your station";
+      const status = getStationStatus(settings?.hours, now);
+      return `
+        <section class="section-hero amber dashboard-hero overview-hero">
+          <div><span class="eyebrow">Station command center</span>
+          <h2>${escapeHtml(greeting)}, ${escapeHtml(firstName)}</h2>
+          <p>${escapeHtml(stationName)} · ${now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p></div>
+          <span class="station-status-chip ${status.open ? "is-open" : "is-closed"}"><span></span>${escapeHtml(status.label)}</span>
+        </section>`;
+    } catch (error) {
+      return widgetError("station greeting", error);
+    }
+  }
+
+  function getStationStatus(hours, now) {
+    const dayRange = String(hours || "").match(/\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s*[-–]\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\b/i);
+    const times = String(hours || "").match(/\d{1,2}(?::\d{2})?\s*[AP]M/gi) || [];
+    if (!dayRange || times.length < 2) return { open: false, label: "Hours not set" };
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const fromDay = days.findIndex(day => day.toLowerCase() === dayRange[1].toLowerCase());
+    const throughDay = days.findIndex(day => day.toLowerCase() === dayRange[2].toLowerCase());
+    const today = now.getDay();
+    const dayOpen = fromDay <= throughDay
+      ? today >= fromDay && today <= throughDay
+      : today >= fromDay || today <= throughDay;
+    const parseTime = value => {
+      const match = value.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+      if (!match) return null;
+      let hour = Number(match[1]) % 12;
+      if (match[3].toUpperCase() === "PM") hour += 12;
+      return hour * 60 + Number(match[2] || 0);
+    };
+    const start = parseTime(times[0]);
+    const end = parseTime(times[1]);
+    const minute = now.getHours() * 60 + now.getMinutes();
+    const withinHours = start <= end
+      ? minute >= start && minute < end
+      : minute >= start || minute < end;
+    const open = dayOpen && withinHours;
+    return { open, label: open ? "Open now" : "Closed now" };
+  }
+
+  function renderQuickActions() {
+    return `
+      <nav class="overview-quick-actions" aria-label="Station quick actions">
+        <button class="button small amber" type="button" data-overview-action="section:promotions">＋ Add Promotion</button>
+        <button class="button small outline" type="button" data-overview-action="section:pricing">₱ Update Prices</button>
+        <button class="button small outline" type="button" data-overview-action="section:staff-approvals">♙ Review Staff Requests</button>
+        <button class="button small outline" type="button" data-overview-action="section:station-settings">◷ Edit Station Hours</button>
+      </nav>`;
+  }
+
+  async function renderOverviewStats() {
+    try {
+      const orders = await global.AquaOwner.fetchOrders();
+      const window = periodWindow();
+      const current = orders.filter(order => dateInWindow(order.createdAt, window.start, window.end));
+      const previous = window.previousStart
+        ? orders.filter(order => dateInWindow(order.createdAt, window.previousStart, new Date(window.previousEnd.getTime() - 1)))
+        : [];
+      const currentPaid = current.filter(isRevenueOrder);
+      const previousPaid = previous.filter(isRevenueOrder);
+      const currentRevenue = current.reduce((sum, order) => sum + getRevenue(order), 0);
+      const previousRevenue = previous.reduce((sum, order) => sum + getRevenue(order), 0);
+      const currentCustomers = new Set(current.map(order => order.userId || order.customerName).filter(Boolean)).size;
+      const previousCustomers = new Set(previous.map(order => order.userId || order.customerName).filter(Boolean)).size;
+      const currentPending = current.filter(isWaitingOrder).length;
+      const previousPending = previous.filter(isWaitingOrder).length;
+      const periodLabel = selectedPeriod === "today" ? "today" : selectedPeriod === "7d" ? "last 7 days" : selectedPeriod === "30d" ? "last 30 days" : "all time";
+      const comparisonLabel = selectedPeriod === "today" ? "yesterday" : selectedPeriod === "7d" ? "last week" : "prior 30 days";
+      const orderLabel = selectedPeriod === "today" ? "Orders Today" : "Total Orders";
+      const cards = [
+        { title: "Total Revenue", value: `₱${currentRevenue.toLocaleString()}`, comparison: metricComparison(currentRevenue, previousRevenue, previousPaid.length > 0, comparisonLabel), icon: "₱", action: "orders:all", tone: "" },
+        { title: orderLabel, value: current.length, comparison: metricComparison(current.length, previous.length, previous.length > 0, comparisonLabel), icon: "▤", action: "orders:all", tone: "amber" },
+        { title: "Unique Customers", value: currentCustomers, comparison: metricComparison(currentCustomers, previousCustomers, previousCustomers > 0, comparisonLabel), icon: "♙", action: "section:customers", tone: "blue" },
+        { title: "Average Order Value", value: currentPaid.length ? `₱${(currentRevenue / currentPaid.length).toFixed(2)}` : "₱0.00", comparison: metricComparison(currentPaid.length ? currentRevenue / currentPaid.length : 0, previousPaid.length ? previousRevenue / previousPaid.length : 0, previousPaid.length > 0, comparisonLabel), icon: "↗", action: "orders:all", tone: "" },
+        { title: "Pending Orders", value: currentPending, comparison: metricComparison(currentPending, previousPending, previous.length > 0, comparisonLabel), icon: "◷", action: "orders:queue", tone: "amber" },
+      ];
+      return `
+        <section class="overview-stats-widget" aria-labelledby="overview-stats-title">
+          <div class="overview-section-toolbar"><div><span class="eyebrow">Performance</span><h3 id="overview-stats-title">Your station at a glance</h3></div>
+            <label class="period-selector">Period <select id="overview-period" aria-label="Performance period">
+              <option value="today" ${selectedPeriod === "today" ? "selected" : ""}>Today</option>
+              <option value="7d" ${selectedPeriod === "7d" ? "selected" : ""}>7 days</option>
+              <option value="30d" ${selectedPeriod === "30d" ? "selected" : ""}>30 days</option>
+              <option value="all" ${selectedPeriod === "all" ? "selected" : ""}>All time</option>
+            </select></label>
+          </div>
+          <div class="stats overview-stats">${cards.map(card => `
+            <button class="stat-card dashboard-stat-card ${card.tone}" type="button" data-overview-action="${card.action}" aria-label="${card.title}: ${card.value}. Open related section">
+              <span class="stat-icon">${card.icon}</span><span class="dashboard-stat-copy"><b>${card.value}</b><small>${card.title} · ${periodLabel}</small><span class="stat-comparison">${card.comparison}</span></span>
+            </button>`).join("")}
+          </div>
+        </section>`;
+    } catch (error) {
+      return widgetError("performance cards", error);
+    }
+  }
+
+  async function renderNeedsAttention() {
+    try {
+      const [orders, approvals, inventory, subscriptions, requests] = await Promise.all([
+        global.AquaOwner.fetchOrders(),
+        global.AquaOwner.fetchStaffApprovals(),
+        global.AquaOwner.fetchInventory(),
+        global.AquaOwner.fetchSubscriptions(),
+        global.AquaOwner.fetchCustomersRequests(),
+      ]);
+      const waiting = orders.filter(isWaitingOrder);
+      const lowStock = Object.entries(inventory).filter(([name, quantity]) => isLowStock(name, quantity));
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueBy = new Date(today);
+      dueBy.setDate(dueBy.getDate() + 3);
+      dueBy.setHours(23, 59, 59, 999);
+      const dueSubscriptions = subscriptions.filter(plan => {
+        const status = String(plan.status || "").toLowerCase();
+        return ["active", "scheduled"].includes(status) && dateInWindow(plan.nextRefill, today, dueBy);
+      });
+      const openRequests = requests.filter(request => !["resolved", "closed", "complete", "completed", "cancelled"].includes(String(request.status || "").toLowerCase()));
+      const items = [
+        { label: "Orders waiting", count: waiting.length, detail: waiting.map(order => order.id).join(", "), action: "orders:queue" },
+        { label: "Staff approvals", count: approvals.length, detail: "Pending staff applications", action: "section:staff-approvals" },
+        { label: "Low-stock items", count: lowStock.length, detail: lowStock.map(([name, amount]) => `${inventoryLabels[name] || name.replace(/[-_]/g, " ")} (${amount})`).join(", "), action: "section:inventory" },
+        { label: "Subscriptions due in 3 days", count: dueSubscriptions.length, detail: "Upcoming recurring deliveries", action: "section:subscriptions" },
+        { label: "Open customer requests", count: openRequests.length, detail: "Requests needing a response", action: "section:customer-requests" },
+      ];
+      const count = items.reduce((sum, item) => sum + item.count, 0);
+      return `<section class="glass-panel dashboard-panel attention-panel">
+        <div class="dashboard-panel-heading"><div><span class="eyebrow">Action center</span><h3>Needs attention</h3></div><span class="pill ${count ? "pending" : "completed"}">${count ? `${count} to review` : "All clear"}</span></div>
+        ${count ? `<div class="attention-list">${items.filter(item => item.count > 0).map(item => `
+          <button class="attention-row" type="button" data-overview-action="${item.action}">
+            <span class="attention-count">${item.count}</span><span class="attention-copy"><strong>${item.label}</strong><small>${escapeHtml(item.detail || "Take a look when you can.")}</small></span><span aria-hidden="true">›</span>
+          </button>`).join("")}
+          ${waiting.length ? `<button class="button small amber" type="button" data-overview-action="orders:queue">Open order queue</button>` : ""}
+        </div>` : `<div class="all-caught-up"><span>✓</span><strong>All caught up</strong><p>Nothing needs your attention right now.</p></div>`}
+      </section>`;
+    } catch (error) {
+      return widgetError("Needs Attention", error);
+    }
+  }
+
+  function getPeriodOrders(orders) {
+    const window = periodWindow();
+    return orders.filter(order => dateInWindow(order.createdAt, window.start, window.end));
+  }
+
+  async function renderRevenueChart() {
+    try {
+      const orders = getPeriodOrders(await global.AquaOwner.fetchOrders()).filter(order => getRevenue(order) > 0);
+      if (!orders.length) return `<section class="glass-panel dashboard-panel chart-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Paid & delivered</span><h3>Revenue over time</h3></div></div><div class="chart-empty">Not enough data yet</div></section>`;
+      const buckets = new Map();
+      orders.forEach(order => {
+        const date = new Date(order.createdAt);
+        const key = selectedPeriod === "today"
+          ? `${date.getHours().toString().padStart(2, "0")}`
+          : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        const label = selectedPeriod === "today"
+          ? `${key}:00`
+          : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const bucket = buckets.get(key) || { label, value: 0 };
+        bucket.value += getRevenue(order);
+        buckets.set(key, bucket);
+      });
+      const entries = [...buckets.entries()].sort(([first], [second]) => first.localeCompare(second)).slice(-14).map(([, value]) => [value.label, value.value]);
+      const maximum = Math.max(...entries.map(([, value]) => value), 1);
+      const barWidth = 620 / entries.length;
+      const bars = entries.map(([label, value], index) => {
+        const height = Math.max(4, (value / maximum) * 128);
+        const x = index * barWidth + barWidth * 0.18;
+        return `<rect x="${x}" y="${145 - height}" width="${barWidth * 0.58}" height="${height}" rx="5" class="revenue-bar"><title>${escapeHtml(label)} · ₱${value.toFixed(2)}</title></rect>`;
+      }).join("");
+      const labels = entries.map(([label], index) => `<text x="${index * barWidth + barWidth / 2}" y="165" text-anchor="middle">${escapeHtml(label)}</text>`).join("");
+      return `<section class="glass-panel dashboard-panel chart-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Paid & delivered</span><h3>Revenue over time</h3></div><span class="chart-caption">${entries.length} ${selectedPeriod === "today" ? "hours" : "days"}</span></div>
+        <svg class="revenue-chart" viewBox="0 0 620 180" role="img" aria-label="Revenue bars by date; hover a bar for details"><line x1="0" y1="145" x2="620" y2="145" class="chart-axis"/>${bars}${labels}</svg></section>`;
+    } catch (error) {
+      return widgetError("revenue chart", error);
+    }
+  }
+
+  async function renderStatusChart() {
+    try {
+      const orders = getPeriodOrders(await global.AquaOwner.fetchOrders());
+      const groups = [
+        ["New", order => ["new", "new order"].includes(String(order.status || "").toLowerCase()), "status-new"],
+        ["Preparing", order => String(order.status || "").toLowerCase().includes("prepar"), "status-preparing"],
+        ["Ready for pickup", order => String(order.status || "").toLowerCase().includes("ready"), "status-ready"],
+        ["Out for delivery", order => String(order.status || "").toLowerCase().includes("out for delivery"), "status-delivery"],
+        ["Delivered", order => ["delivered", "complete", "completed"].includes(String(order.status || "").toLowerCase()), "status-delivered"],
+        ["Cancelled", order => String(order.status || "").toLowerCase().includes("cancel"), "status-cancelled"],
+      ];
+      if (!orders.length) return `<section class="glass-panel dashboard-panel chart-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Fulfillment</span><h3>Orders by status</h3></div></div><div class="chart-empty">Not enough data yet</div></section>`;
+      const counts = groups.map(([, matches]) => orders.filter(matches).length);
+      const otherCount = Math.max(0, orders.length - counts.reduce((sum, value) => sum + value, 0));
+      if (otherCount) groups.push(["Other", () => false, "status-other"]);
+      if (otherCount) counts.push(otherCount);
+      return `<section class="glass-panel dashboard-panel chart-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Fulfillment</span><h3>Orders by status</h3></div><span class="chart-caption">${orders.length} orders</span></div>
+        <div class="status-segments" role="img" aria-label="${groups.map(([label], index) => `${label}: ${counts[index]}`).join(", ")}">${groups.map(([label, , tone], index) => counts[index] ? `<span class="${tone}" style="width:${counts[index] / orders.length * 100}%" title="${label}: ${counts[index]}"></span>` : "").join("")}</div>
+        <div class="chart-legend">${groups.map(([label, , tone], index) => `<span><i class="${tone}"></i>${label}<b>${counts[index]}</b></span>`).join("")}</div></section>`;
+    } catch (error) {
+      return widgetError("order status chart", error);
+    }
+  }
+
+  async function renderFulfillmentChart() {
+    try {
+      const orders = getPeriodOrders(await global.AquaOwner.fetchOrders());
+      if (!orders.length) return `<section class="glass-panel dashboard-panel chart-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Fulfillment mix</span><h3>Delivery vs pickup</h3></div></div><div class="chart-empty">Not enough data yet</div></section>`;
+      const delivery = orders.filter(order => getFulfillment(order) === "delivery").length;
+      const pickup = orders.filter(order => getFulfillment(order) === "pickup").length;
+      const total = delivery + pickup;
+      return `<section class="glass-panel dashboard-panel chart-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Fulfillment mix</span><h3>Delivery vs pickup</h3></div></div>
+        ${total ? `<div class="fulfillment-bar"><span class="fulfillment-delivery" style="width:${delivery / total * 100}%" title="Delivery: ${delivery}"></span><span class="fulfillment-pickup" style="width:${pickup / total * 100}%" title="Pickup: ${pickup}"></span></div>
+          <div class="fulfillment-labels"><span>Delivery <b>${delivery} · ${Math.round(delivery / total * 100)}%</b></span><span>Pickup <b>${pickup} · ${Math.round(pickup / total * 100)}%</b></span></div>` : `<div class="chart-empty">Not enough data yet</div>`}
+      </section>`;
+    } catch (error) {
+      return widgetError("fulfillment chart", error);
+    }
+  }
+
+  async function renderRecentOrders() {
+    try {
+      const orders = [...await global.AquaOwner.fetchOrders()]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 5);
+      return `<section class="glass-panel dashboard-panel recent-orders-panel">
+        <div class="dashboard-panel-heading"><div><span class="eyebrow">Latest activity</span><h3>Recent orders</h3></div>
+          <button class="button small outline" type="button" data-overview-action="orders:all">View all</button></div>
+        ${orders.length ? `<div class="activity-list">${orders.map(order => {
+          const normalized = String(order.status || "").toLowerCase();
+          const fulfillment = getFulfillment(order);
+          const nextStatus = ["new", "new order"].includes(normalized) ? "Preparing"
+            : normalized === "preparing" ? (fulfillment === "delivery" ? "Out for delivery" : "Ready for Pickup")
+              : null;
+          return `<article class="activity-row">
+            <span class="activity-icon">${fulfillment === "pickup" ? "⌂" : "↗"}</span>
+            <div class="activity-copy"><strong>${escapeHtml(order.customerName || "Customer")} · ${Number(order.gallons || 0)} gal</strong><small>${escapeHtml(order.id)} · ${formatDate(order.createdAt)} · ${fulfillment === "pickup" ? "Pickup" : "Delivery"}</small></div>
+            <div class="activity-meta"><span class="pill ${statusClass(order.status)}">${escapeHtml(order.status || "New")}</span><strong>₱${Number(order.total || 0).toFixed(2)}</strong>${nextStatus ? `<button class="button tiny outline" type="button" data-overview-action="advance" data-order-id="${escapeHtml(order.id)}" data-next-status="${nextStatus}">${nextStatus === "Preparing" ? "Mark preparing" : nextStatus === "Out for delivery" ? "Mark out for delivery" : "Mark ready"}</button>` : ""}</div>
+          </article>`;
+        }).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">▤</span><strong>No order activity yet</strong><p>New station orders will appear here.</p></div>`}
+      </section>`;
+    } catch (error) {
+      return widgetError("recent orders", error);
+    }
+  }
+
+  async function switchSection(sectionId, keepOrdersFilter = false) {
     currentSection = sectionId;
+    if (sectionId !== "orders" || !keepOrdersFilter) ordersFilter = null;
     window.location.hash = sectionId;
     document.querySelectorAll('#side-nav button').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.section === sectionId);
@@ -97,6 +421,14 @@
         eyebrow.textContent = 'Station Profile';
         title.textContent = 'Business Settings';
         await renderSettings(main);
+      } else if (sectionId === 'inventory') {
+        eyebrow.textContent = 'Station Supplies';
+        title.textContent = 'Inventory';
+        await renderInventory(main);
+      } else if (sectionId === 'customer-requests') {
+        eyebrow.textContent = 'Customer Support';
+        title.textContent = 'Customer Requests';
+        await renderCustomerRequests(main);
       } else if (sectionId === 'profile') {
         eyebrow.textContent = 'Account';
         title.textContent = 'Owner Profile';
@@ -110,69 +442,96 @@
 
   async function renderOverview(container) {
     try {
-      const [stats, orders] = await Promise.all([
-        global.AquaOwner.fetchBusinessStats(),
-        global.AquaOwner.fetchOrders(),
+      const [hero, quickActions, stats, attention, revenueChart, statusChart, fulfillmentChart, recentOrders] = await Promise.all([
+        renderOverviewHero(),
+        renderQuickActions(),
+        renderOverviewStats(),
+        renderNeedsAttention(),
+        renderRevenueChart(),
+        renderStatusChart(),
+        renderFulfillmentChart(),
+        renderRecentOrders(),
       ]);
-      const hour = new Date().getHours();
-      const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-      const recentOrders = [...orders]
-        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-        .slice(0, 3);
       container.innerHTML = `
-        ${sectionHero(`Management Console · ${currentUser.station}`, `${greeting}, ${currentUser.name.split(" ")[0]} — here's your station at a glance.`, `A live snapshot of ${currentUser.station}'s business and the activity that needs your attention.`)}
-        <div class="stats four">
-          <div class="stat-card">
-            <div class="stat-icon">₱</div>
-            <div><b>₱${(stats.revenue || 0).toLocaleString()}</b><small>Total Revenue</small></div>
-          </div>
-          <div class="stat-card amber">
-            <div class="stat-icon">📦</div>
-            <div><b>${stats.orderVolume || 0}</b><small>Total Orders</small></div>
-          </div>
-          <div class="stat-card blue">
-            <div class="stat-icon">🕒</div>
-            <div><b>${stats.ordersToday || 0}</b><small>Orders Today</small></div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon">👥</div>
-            <div><b>${stats.customerCount || 0}</b><small>Unique Customers</small></div>
-          </div>
-        </div>
-        <div class="dashboard-split">
-          <section class="glass-panel dashboard-panel">
-            <div class="dashboard-panel-heading">
-              <div><span class="eyebrow">Latest activity</span><h3>Recent orders</h3></div>
-              <button class="button small outline" type="button" onclick="switchSection('orders')">View all</button>
-            </div>
-            ${recentOrders.length ? `<div class="activity-list">${recentOrders.map(order => `
-              <article class="activity-row">
-                <span class="activity-icon">↗</span>
-                <div class="activity-copy"><strong>${order.customerName || "Customer"} · ${order.gallons || 0} gal</strong><small>${order.id} · ${formatDate(order.createdAt)}</small></div>
-                <div class="activity-meta"><span class="pill ${statusClass(order.status)}">${order.status}</span><strong>₱${Number(order.total || 0).toFixed(2)}</strong></div>
-              </article>
-            `).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">📦</span><strong>No order activity yet</strong><p>New station orders will appear here.</p></div>`}
-          </section>
-          <aside class="glass-panel dashboard-note-panel">
-            <span class="dashboard-note-icon">✦</span>
-            <span class="eyebrow">Today's focus</span>
-            <h3>Keep every refill moving.</h3>
-            <p>${stats.ordersToday || 0} ${Number(stats.ordersToday) === 1 ? "order is" : "orders are"} on the books today. Check the fulfillment queue to keep customers up to date.</p>
-            <button class="button small amber" type="button" onclick="switchSection('orders')">Open order queue</button>
-          </aside>
-        </div>
+        ${hero}
+        ${quickActions}
+        ${stats}
+        ${attention}
+        <div class="overview-chart-grid">${revenueChart}${statusChart}${fulfillmentChart}</div>
+        ${recentOrders}
       `;
+      container.onclick = async event => {
+        const button = event.target.closest("[data-overview-action]");
+        if (!button) return;
+        const [type, value] = button.dataset.overviewAction.split(":");
+        if (type === "section") await switchSection(value);
+        else if (type === "orders") await openOrders(value);
+        else if (type === "advance") await advanceOverviewOrder(button.dataset.orderId, button.dataset.nextStatus);
+      };
+      container.onchange = async event => {
+        if (event.target.id !== "overview-period") return;
+        selectedPeriod = event.target.value;
+        await renderOverview(container);
+      };
     } catch (err) {
       console.error("Error rendering overview:", err);
       container.innerHTML = `<div class="empty-state">Couldn't load data — see console</div>`;
     }
   }
 
+  async function renderInventory(container) {
+    try {
+      const inventory = await global.AquaOwner.fetchInventory();
+      const items = Object.entries(inventory);
+      container.innerHTML = `${sectionHero(`Station supplies · ${escapeHtml(currentUser.station)}`, "Inventory levels", "Review stock for the items your station uses every day.")}
+        <section class="glass-panel dashboard-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Stock on hand</span><h3>Inventory items</h3></div><span class="pill blue">${items.length} items</span></div>
+        ${items.length ? `<div class="inventory-summary-grid">${items.map(([name, quantity]) => `<article class="glass-card inventory-summary-card"><span class="eyebrow">${escapeHtml(inventoryLabels[name] || name.replace(/[-_]/g, " "))}</span><strong>${Number(quantity)}</strong><span class="pill ${isLowStock(name, quantity) ? "pending" : "completed"}">${isLowStock(name, quantity) ? "Low stock" : "In stock"}</span></article>`).join("")}</div>` : `<div class="empty-state dashboard-empty"><strong>No inventory recorded</strong></div>`}</section>`;
+    } catch (error) {
+      container.innerHTML = widgetError("inventory", error);
+    }
+  }
+
+  async function renderCustomerRequests(container) {
+    try {
+      const requests = await global.AquaOwner.fetchCustomersRequests();
+      const open = requests.filter(request => !["resolved", "closed", "complete", "completed", "cancelled"].includes(String(request.status || "").toLowerCase()));
+      container.innerHTML = `${sectionHero(`Customer support · ${escapeHtml(currentUser.station)}`, "Customer requests", "Follow up on questions and delivery instructions from your customers.")}
+        <section class="glass-panel dashboard-panel"><div class="dashboard-panel-heading"><div><span class="eyebrow">Open requests</span><h3>Requests needing a response</h3></div><span class="pill ${open.length ? "pending" : "completed"}">${open.length} open</span></div>
+        ${open.length ? `<div class="dashboard-card-list">${open.map(request => `<article class="glass-card request-summary-card"><div><strong>${escapeHtml(request.subject || request.customerName || "Customer request")}</strong><p>${escapeHtml(request.message || "")}</p></div><span class="pill pending">${escapeHtml(request.status)}</span></article>`).join("")}</div>` : `<div class="empty-state dashboard-empty"><strong>No open customer requests</strong><p>New customer requests will appear here.</p></div>`}</section>`;
+    } catch (error) {
+      container.innerHTML = widgetError("customer requests", error);
+    }
+  }
+
+  async function openOrders(filter = "all") {
+    ordersFilter = filter === "all" ? null : filter;
+    await switchSection("orders", true);
+  }
+
+  async function openOrderQueue() {
+    await openOrders("queue");
+  }
+
+  async function advanceOverviewOrder(orderId, nextStatus) {
+    try {
+      await global.AquaOwner.updateOrderStatus(orderId, nextStatus);
+      showToast(`Order ${orderId} moved to ${nextStatus}.`);
+      if (currentSection === "overview") await renderOverview(document.getElementById("main-content"));
+      else await renderOrders(document.getElementById("main-content"));
+    } catch (error) {
+      console.error("Error updating order from Overview:", error);
+      showToast("Couldn't update the order. Please try again.");
+    }
+  }
+
   async function renderOrders(container) {
     try {
-      const orders = await global.AquaCommon.fetchOrders();
-      const pending = orders.filter(order => !["delivered", "completed", "cancelled"].includes(String(order.status).toLowerCase()));
-      const revenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+      const allOrders = await global.AquaOwner.fetchOrders();
+      const orders = ordersFilter === "queue" ? allOrders.filter(isWaitingOrder) : ordersFilter === "today"
+        ? allOrders.filter(order => dateInWindow(order.createdAt, periodWindow("today").start, periodWindow("today").end))
+        : allOrders;
+      const pending = allOrders.filter(isWaitingOrder);
+      const revenue = allOrders.reduce((sum, order) => sum + getRevenue(order), 0);
       container.innerHTML = `
         ${sectionHero(`Order oversight · ${currentUser.station}`, "Every refill, in one place.", "Follow incoming station orders, monitor fulfillment, and keep every customer informed.")}
         <div class="stats three">
@@ -182,7 +541,7 @@
         </div>
         <section class="glass-panel dashboard-panel">
           <div class="dashboard-panel-heading">
-            <div><span class="eyebrow">Fulfillment</span><h3>All station orders</h3></div>
+            <div><span class="eyebrow">Fulfillment</span><h3>${ordersFilter === "queue" ? "New & preparing orders" : ordersFilter === "today" ? "Today's orders" : "All station orders"}</h3></div>
             <span class="pill blue">${orders.length} records</span>
           </div>
           ${orders.length ? `<div class="table-wrap dashboard-table-wrap">
@@ -227,7 +586,7 @@
               <article class="glass-card dashboard-person-card approval-card">
                 <div class="dashboard-person-main"><span class="dashboard-avatar">${getInitials(applicant.name)}</span><div><strong>${applicant.name}</strong><span>${applicant.email}</span></div></div>
                 <div class="approval-details"><span class="eyebrow">Requested assignment</span><strong>${applicant.station || currentUser.station}</strong><small>Submitted ${formatDate(applicant.createdAt || applicant.submittedAt)}</small></div>
-                <div class="dashboard-card-actions"><button class="button small amber" onclick="handleStaffDecision('${applicant.id}', 'approve')">Approve</button><button class="button small outline" onclick="handleStaffDecision('${applicant.id}', 'reject')">Reject</button></div>
+                <div class="dashboard-card-actions"><button class="button small amber" data-approval-id="${escapeHtml(applicant.id)}" data-decision="approve">Approve</button><button class="button small outline" data-approval-id="${escapeHtml(applicant.id)}" data-decision="reject">Reject</button></div>
               </article>
             `).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">✓</span><strong>All caught up</strong><p>There are no staff applications waiting for review.</p></div>`}
           </section>
@@ -239,6 +598,10 @@
           </section>
         </div>
       `;
+      container.onclick = async event => {
+        const button = event.target.closest("[data-approval-id]");
+        if (button) await handleStaffDecision(button.dataset.approvalId, button.dataset.decision);
+      };
     } catch (err) {
       console.error("Error rendering staff:", err);
       container.innerHTML = `<div class="empty-state">Couldn't load data — see console</div>`;
@@ -249,7 +612,7 @@
     try {
       const res = await global.AquaOwner.decideStaffApproval(id, decision);
       showToast(`Staff member ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`);
-      renderStaff(document.getElementById('main-content'));
+      await renderStaff(document.getElementById('main-content'));
     } catch (err) {
       console.error("Error deciding staff approval:", err);
       showToast("Failed to update staff status.");
@@ -309,7 +672,7 @@
                   <div class="dashboard-price-editor">
                     <span>₱</span>
                     <input type="number" min="0" step="0.01" value="${price}" id="price-${prod}">
-                    <button class="button small amber" onclick="savePrice('${prod}')">Save rate</button>
+                    <button class="button small amber" data-price-product="${prod}">Save rate</button>
                   </div>
                 </article>`;
             }
@@ -322,6 +685,10 @@
       }
 
       container.innerHTML = html;
+      container.onclick = async event => {
+        const button = event.target.closest("[data-price-product]");
+        if (button) await savePrice(button.dataset.priceProduct);
+      };
     } catch (err) {
       console.error("Error rendering pricing:", err);
       container.innerHTML = `<div class="empty-state">Couldn't load data — see console</div>`;
@@ -360,9 +727,12 @@
               <label for="set-contact">Contact number</label><input type="text" id="set-contact" value="${settings.contact}">
             </fieldset>
           </div>
-          <div class="dashboard-form-footer"><p>Changes update your station profile on this device.</p><button class="button amber" onclick="saveSettings()">Save station details</button></div>
+          <div class="dashboard-form-footer"><p>Changes update your station profile on this device.</p><button class="button amber" data-save-settings>Save station details</button></div>
         </section>
       `;
+      container.onclick = async event => {
+        if (event.target.closest("[data-save-settings]")) await saveSettings();
+      };
     } catch (err) {
       console.error("Error rendering settings:", err);
       container.innerHTML = `<div class="empty-state">Couldn't load data — see console</div>`;
@@ -515,6 +885,7 @@
   // Bridge to HTML's DOMContentLoaded: allow HTML to set the user object
   global.setUser = function(user) {
     currentUser = user;
+    global.AquaOwner.setOwner(user);
   };
   global.showToast = global.showToast || function(message) {
     let toast = document.getElementById('toast');
@@ -531,6 +902,9 @@
   };
 
   global.switchSection = switchSection;
+  global.openOrders = openOrders;
+  global.openOrderQueue = openOrderQueue;
+  global.advanceOverviewOrder = advanceOverviewOrder;
   global.saveOwnerProfile = saveOwnerProfile;
   global.handleStaffDecision = handleStaffDecision;
   global.savePrice = savePrice;

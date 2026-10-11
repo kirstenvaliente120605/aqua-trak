@@ -8,16 +8,33 @@
 
   const keys = global.AquaCommon.STORE_KEYS;
   const common = global.AquaCommon;
-  const stationId = "drink-refill";
+  let stationId = null;
+
+  function setOwner(user) {
+    const stations = common.read(keys.STATIONS, []);
+    const station = stations.find(item =>
+      (user.stationId && item.id === user.stationId) ||
+      (user.userId && item.ownerId === user.userId) ||
+      (user.station && item.name === user.station)
+    );
+    stationId = station ? station.id : null;
+  }
 
   function currentOrders() {
     return common.read(keys.ORDERS, []).filter(order => order.stationId === stationId);
   }
 
+  function isRevenueOrder(order) {
+    const status = String(order.status || "").toLowerCase();
+    return !status.includes("cancel") &&
+      (status === "paid" || status === "delivered" || String(order.paymentStatus || "").toLowerCase() === "paid");
+  }
+
   async function fetchBusinessStats() {
     const orders = currentOrders();
+    const revenueOrders = orders.filter(isRevenueOrder);
     return {
-      revenue: orders.reduce((sum, order) => sum + Number(order.total || 0), 0),
+      revenue: revenueOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0),
       orderVolume: orders.length,
       ordersToday: orders.filter(order => order.createdAt?.slice(0, 10) === new Date().toISOString().slice(0, 10)).length,
       customerCount: new Set(orders.map(order => order.userId || order.customerName)).size,
@@ -26,6 +43,20 @@
 
   async function fetchOrders() {
     return currentOrders();
+  }
+
+  async function updateOrderStatus(orderId, newStatus) {
+    const orders = common.read(keys.ORDERS, []);
+    const order = orders.find(item => item.id === orderId && item.stationId === stationId);
+    if (!order) throw new Error("Station order not found.");
+    order.status = newStatus;
+    order.updatedAt = new Date().toISOString();
+    common.write(keys.ORDERS, orders);
+    return order;
+  }
+
+  async function fetchInventory() {
+    return common.read(keys.INVENTORY, {})[stationId] || {};
   }
 
   async function fetchPricing() {
@@ -96,8 +127,11 @@
   }
 
   const AquaOwner = {
+    setOwner,
     fetchBusinessStats,
     fetchOrders,
+    updateOrderStatus,
+    fetchInventory,
     fetchPricing,
     updatePricing,
     fetchCustomers,
