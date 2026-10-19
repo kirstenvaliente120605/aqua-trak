@@ -13,7 +13,7 @@
 
   async function getCurrentUser() {
     try {
-      const res = await fetch("/api/auth/me", {
+      const res = await fetch(API_BASE + "/api/auth/me", {
         credentials: "same-origin",
         headers: { Accept: "application/json" },
       });

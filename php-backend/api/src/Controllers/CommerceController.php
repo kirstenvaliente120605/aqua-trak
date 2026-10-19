@@ -356,4 +356,55 @@ final class CommerceController
             'createdAt'      => Dates::iso($row['created_at'] ?? null),
         ];
     }
+
+
+    public static function loyalty(RouteContext $ctx): never
+    {
+        $userId = $ctx->user["id"] ?? null;
+        if ($userId === null) Response::fail("Not signed in.", 401);
+        $row = Database::one("SELECT * FROM loyalty_points WHERE user_id = ? LIMIT 1", [$userId]);
+        if ($row === null) {
+            Database::run("INSERT INTO loyalty_points (id, user_id, balance, tier) VALUES (?, ?, 0, 'Bronze')", [Database::uuid(), $userId]);
+            $row = Database::one("SELECT * FROM loyalty_points WHERE user_id = ? LIMIT 1", [$userId]);
+        }
+        Response::json(["loyalty" => ["balance" => (int)$row["balance"], "tier" => (string)$row["tier"]]]);
+    }
+
+    public static function addLoyalty(RouteContext $ctx): never
+    {
+        $userId = $ctx->user["id"] ?? null;
+        $pts = filter_var($ctx->input("points"), FILTER_VALIDATE_INT) ?? 0;
+        if ($pts <= 0) Response::fail("Invalid points.", 400);
+        $row = Database::one("SELECT * FROM loyalty_points WHERE user_id = ? LIMIT 1", [$userId]);
+        if ($row === null) {
+            Database::run("INSERT INTO loyalty_points (id, user_id, balance, tier) VALUES (?, ?, ?, 'Bronze')", [Database::uuid(), $userId, $pts]);
+        } else {
+            Database::run("UPDATE loyalty_points SET balance = balance + ?, updated_at = NOW() WHERE user_id = ?", [$pts, $userId]);
+        }
+        Response::json(["ok" => true]);
+    }
+
+
+    public static function savedStations(RouteContext $ctx): never
+    {
+        $userId = $ctx->user["id"] ?? null;
+        if ($userId === null) Response::fail("Not signed in.", 401);
+        $rows = Database::all("SELECT station_id FROM saved_stations WHERE user_id = ?", [$userId]);
+        Response::json(["stations" => array_map(fn($r) => $r["station_id"], $rows)]);
+    }
+    public static function saveStation(RouteContext $ctx): never
+    {
+        $userId = $ctx->user["id"] ?? null;
+        $stationId = trim((string) ($ctx->input("stationId") ?? ""));
+        if ($userId === null || $stationId === "") Response::fail("Invalid.", 400);
+        $exists = Database::scalar("SELECT 1 FROM saved_stations WHERE user_id = ? AND station_id = ? LIMIT 1", [$userId, $stationId]);
+        if ($exists) {
+            Database::run("DELETE FROM saved_stations WHERE user_id = ? AND station_id = ?", [$userId, $stationId]);
+            Response::json(["saved" => false]);
+        } else {
+            Database::run("INSERT IGNORE INTO saved_stations (id, user_id, station_id) VALUES (?, ?, ?)", [Database::uuid(), $userId, $stationId]);
+            Response::json(["saved" => true]);
+        }
+    }
+
 }

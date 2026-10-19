@@ -1170,7 +1170,7 @@
    */
   async function fetchSubscriptions() {
     /* BACKEND INTEGRATION STUB:
-     * const res = await fetch('/api/subscriptions');
+     * const res = await fetch(API_BASE + '/api/subscriptions');
      * return await res.json();
      */
     initDataStores();
@@ -1182,7 +1182,7 @@
    */
   async function createSubscription(subPayload) {
     /* BACKEND INTEGRATION STUB:
-     * const res = await fetch('/api/subscriptions', { method: 'POST', body: JSON.stringify(subPayload) });
+     * const res = await fetch(API_BASE + '/api/subscriptions', { method: 'POST', body: JSON.stringify(subPayload) });
      * return await res.json();
      */
     initDataStores();

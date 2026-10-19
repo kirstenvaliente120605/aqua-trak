@@ -1,3 +1,5 @@
+const API_BASE = "http://localhost:8080";
+
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));

@@ -53,6 +53,11 @@ $router->get('/api/orders',  [CommerceController::class, 'listOrders'],  [$requi
 $router->post('/api/orders', [CommerceController::class, 'createOrder'], [$requireRole('customer')]);
 
 $router->get('/api/subscriptions', [CommerceController::class, 'listSubscriptions'], [$requireRole('customer')]);
+$router->get('/api/loyalty', [CommerceController::class, 'loyalty'], [$requireRole('customer')]);
+$router->post('/api/loyalty', [CommerceController::class, 'addLoyalty'], [$requireRole('customer')]);
+$router->get('/api/saved-stations', [CommerceController::class, 'savedStations'], [$requireRole('customer')]);
+$router->post('/api/saved-stations', [CommerceController::class, 'saveStation'], [$requireRole('customer')]);
+
 $router->post('/api/subscriptions', [CommerceController::class, 'createSubscription'], [$requireRole('customer')]);
 $router->post('/api/subscriptions/:id/cancel', [CommerceController::class, 'cancelSubscription'], [$requireRole('customer')]);
 

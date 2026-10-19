@@ -147,6 +147,10 @@ final class OwnerController
      */
     private static function readBlob(string $table, string $stationId, array $default): array
     {
+        $allowed = ["station_settings", "station_pricing"];
+        if (!in_array($table, $allowed, true)) {
+            throw new \InvalidArgumentException("Invalid table: $table");
+        }
         $row = Database::one("SELECT payload FROM `$table` WHERE station_id = ? LIMIT 1", [$stationId]);
         if ($row === null) {
             return $default;
@@ -158,6 +162,10 @@ final class OwnerController
 
     private static function writeBlob(string $table, string $stationId, array $payload): void
     {
+        $allowed = ["station_settings", "station_pricing"];
+        if (!in_array($table, $allowed, true)) {
+            throw new \InvalidArgumentException("Invalid table: $table");
+        }
         Database::run(
             "INSERT INTO `$table` (station_id, payload) VALUES (?, ?)
              ON DUPLICATE KEY UPDATE payload = VALUES(payload)",
