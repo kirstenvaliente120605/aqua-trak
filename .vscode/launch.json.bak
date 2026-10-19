@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "AquaTracker — Start and Open",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-aquatracker.ps1",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "AquaTracker running at (https?://\\S+)"
+      }
+    }
+  ]
+}

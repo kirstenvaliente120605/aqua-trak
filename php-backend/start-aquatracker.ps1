@@ -1,7 +1,7 @@
 <#
     AquaTracker - starts everything the app needs.
 
-      1. MySQL Server 26.7 on port 3307  (config: mysql\my-aquatracker.ini)
+      1. MySQL Server 26.7 on port 3306  (config: mysql\my-aquatracker.ini)
       2. Apache + PHP       on port 8080  (config: C:\xampp\apache\conf\httpd.conf)
 
     Run start-aquatracker.bat (which calls this) or, from PowerShell:
@@ -27,7 +27,7 @@ $mysqlIni      = Join-Path $here 'mysql\my-aquatracker.ini'
 $mysqld        = 'C:\Program Files\MySQL\MySQL Server 26.7\bin\mysqld.exe'
 $httpd         = Join-Path $xampp 'apache\bin\httpd.exe'
 $httpdConf     = Join-Path $xampp 'apache\conf\httpd.conf'
-$portDb        = 3307
+$portDb        = 3306
 $portWeb       = 8080
 $dbErrorLog    = 'C:\xampp\mysql\data-aquatracker\error.log'
 $apacheErrLog  = Join-Path $xampp 'apache\logs\error.log'

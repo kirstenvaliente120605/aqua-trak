@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+<base href="/">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/logo/favicon-192.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/assets/logo/favicon-48.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/logo/favicon-16.png">
+  <link rel="apple-touch-icon" href="/assets/logo/favicon-180.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#073b4c">
+  <title>AquaTracker — Find water nearby</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body data-page="home">
+  <header class="public-nav"><div class="container nav-inner"><a class="landing-brand" href="/"><img src="/assets/logo/aquatracker-lockup-teal.png" alt="AquaTracker" class="brand-lockup"></a><nav><a href="#for-stations">For station owners</a><a href="/auth/staff/login">Staff sign in</a></nav><div><a class="button outline" href="/auth/customer/login">Log in</a><a class="button" href="/auth/customer/register">Create account →</a></div><button class="mobile-toggle" data-mobile-menu>☰</button></div><div class="mobile-nav" data-mobile-nav><a href="#for-stations">For station owners</a><a href="/auth/staff/login">Staff sign in</a><a class="button" href="/auth/customer/login">Log in</a></div></header>
+
+
+  <main>
+    <section class="hero"><div class="container hero-grid"><div class="hero-copy"><span class="eyebrow">● Your everyday water companion</span><h1>Refill closer.<br><em>Live lighter.</em></h1><p>A better way to find water stations, manage refills, and keep the good stuff flowing at home.</p><div class="actions"><a class="button" href="/auth/customer/login">Find a station →</a></div><p class="social-proof"><b>2,400+</b> neighbors already refilling smarter</p></div>        <div class="hero-art"><img src="/assets/aquatracker-hero.png" alt="AquaTracker water station"><div class="floating-card"><b>ClearSpring Hub</b><small>Pagadian City · Station listings nearby</small><strong>★ 4.9 · ₱35 / gallon</strong></div><div class="map-card"><b>Your refill map</b><strong>12</strong><small>stations nearby</small></div></div></div></section>
+    <section class="feature-strip"><div class="container three"><div><b>⌖ Local station discovery</b><small>Find options around you</small></div><div><b>◷ Refills on your rhythm</b><small>Pickup, delivery, or plans</small></div><div><b>✓ Built around trust</b><small>Clear details at every step</small></div></div></section>
+    <section id="for-stations" class="dark-section"><div class="container split"><div><span class="pill orange">For water station teams</span><h2>The calm behind a busy counter.</h2><p>AquaTracker gives owners and staff a single place to keep station details, orders, plans, and customer relationships moving in the right direction.</p><div class="actions"><a class="button" href="/auth/owner/register">List your station →</a><a class="button outline dark-outline" href="/auth/owner/login">Owner sign in</a><a class="button outline dark-outline" href="/auth/staff/register">Staff registration</a></div></div><img class="station-image" src="/assets/aquatracker-station.png" alt="Modern water refilling station"></div></section>
+  </main>
+  <footer><a class="mark" href="/"><img src="/assets/logo/aquatracker-icon-teal.png" alt="AquaTracker logo" class="brand-icon"><span>Aqua<span class="mark-accent">Tracker</span></span></a><span>Customer, Owner, and Staff workspaces for better refills.</span><span>© 2026 AquaTracker</span></footer>
+  <script src="/js/app.js?v=20260922" defer></script>
+</body>
+</html>

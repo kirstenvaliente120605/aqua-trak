@@ -16,11 +16,67 @@ final class Auth
     /** Resolved once per request. */
     private static ?array $currentUser = null;
     private static bool $resolved = false;
+    private static bool $authSchemaReady = false;
+
+    private static function ensureAuthSchema(): void
+    {
+        if (self::$authSchemaReady) {
+            return;
+        }
+
+        $columns = array_fill_keys(
+            array_column(Database::all('SHOW COLUMNS FROM users'), 'Field'),
+            true
+        );
+        if (!isset($columns['name']) && !isset($columns['full_name'])) {
+            throw new \RuntimeException('The users table must contain a name or full_name column.');
+        }
+
+        if (!isset($columns['name'])) {
+            Database::run("ALTER TABLE users ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT ''");
+            Database::run('UPDATE users SET name = full_name');
+        }
+        if (!isset($columns['full_name'])) {
+            Database::run("ALTER TABLE users ADD COLUMN full_name VARCHAR(100) NOT NULL DEFAULT ''");
+            Database::run('UPDATE users SET full_name = name');
+        }
+
+        $optionalColumns = [
+            'subtitle' => "VARCHAR(190) NOT NULL DEFAULT ''",
+            'station' => "VARCHAR(190) NOT NULL DEFAULT ''",
+            'station_id' => "VARCHAR(64) NOT NULL DEFAULT ''",
+            'permissions' => 'TEXT NULL',
+            'location' => "VARCHAR(120) NOT NULL DEFAULT ''",
+            'status' => "ENUM('active','pending','rejected') NOT NULL DEFAULT 'active'",
+            'reviewed_at' => 'DATETIME NULL',
+            'remember_me' => 'TINYINT(1) NOT NULL DEFAULT 0',
+        ];
+        foreach ($optionalColumns as $column => $definition) {
+            if (!isset($columns[$column])) {
+                Database::run("ALTER TABLE users ADD COLUMN `$column` $definition");
+            }
+        }
+
+        Database::run(
+            'CREATE TABLE IF NOT EXISTS sessions (
+                token CHAR(64) NOT NULL,
+                user_id CHAR(36) NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (token),
+                KEY ix_sessions_user (user_id),
+                KEY ix_sessions_expiry (expires_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+
+        self::$authSchemaReady = true;
+    }
 
     // -- session lifecycle ---------------------------------------------------
 
     public static function currentUser(): ?array
     {
+        self::ensureAuthSchema();
         if (self::$resolved) {
             return self::$currentUser;
         }
@@ -45,6 +101,7 @@ final class Auth
 
     public static function login(array $user): void
     {
+        self::ensureAuthSchema();
         $token = bin2hex(random_bytes(32));
 
         Database::run(
@@ -66,6 +123,7 @@ final class Auth
 
     public static function logout(): void
     {
+        self::ensureAuthSchema();
         $token = Request::capture()->cookie(AQ_SESSION_COOKIE);
         if ($token !== null && $token !== '') {
             Database::run('DELETE FROM sessions WHERE token = ?', [$token]);
@@ -86,6 +144,7 @@ final class Auth
 
     public static function findByEmail(string $email): ?array
     {
+        self::ensureAuthSchema();
         $email = strtolower(trim($email));
         if ($email === '') {
             return null;
@@ -96,6 +155,7 @@ final class Auth
 
     public static function findById(string $id): ?array
     {
+        self::ensureAuthSchema();
         return Database::one('SELECT * FROM users WHERE id = ? LIMIT 1', [$id]);
     }
 
@@ -105,7 +165,7 @@ final class Auth
 
         // Pending staff cannot sign in until an owner approves them, which is
         // why status is checked before the password.
-        if ($user === null || $user['status'] !== 'active') {
+        if ($user === null || ($user['status'] ?? 'active') !== 'active') {
             return null;
         }
         if (!password_verify($password, (string) $user['password_hash'])) {
@@ -118,11 +178,12 @@ final class Auth
     /**
      * @return array{user?:array<string,mixed>,error?:string}
      */
-    public static function createUser(string $email, string $password, string $name, string $role, string $station = ''): array
+    public static function createUser(string $email, string $password, string $name, string $role, string $station = '', string $phone = '', int $remember = 0): array
     {
         $email    = strtolower(trim($email));
         $name     = trim($name);
         $station  = trim($station);
+        $phone    = trim($phone);
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return ['error' => 'Please enter a valid email address.'];
@@ -141,6 +202,7 @@ final class Auth
         }
 
         $id = Database::uuid();
+        $stationId = $role === 'staff' ? 'drink-refill' : '';
 
         $subtitle = match ($role) {
             'owner' => $station !== '' ? $station : 'Station owner',
@@ -154,23 +216,42 @@ final class Auth
             ? json_encode(['orders', 'inventory', 'requests'], JSON_UNESCAPED_SLASHES)
             : json_encode([], JSON_UNESCAPED_SLASHES);
 
-        Database::run(
-            'INSERT INTO users (id, email, password_hash, name, role, subtitle, station, station_id,
-                                permissions, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-                $id,
-                $email,
-                password_hash($password, PASSWORD_DEFAULT),
-                $name,
-                $role,
-                $subtitle,
-                $station,
-                $role === 'staff' ? 'drink-refill' : '',
-                $permissions,
-                $status,
-            ]
-        );
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            Database::run(
+                'INSERT INTO users (
+                    id, email, password_hash, name, full_name, role, subtitle,
+                    station, station_id, permissions, phone, location, status,
+                    remember_me, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+                [
+                    $id,
+                    $email,
+                    password_hash($password, PASSWORD_DEFAULT),
+                    $name,
+                    $name,
+                    $role,
+                    $subtitle,
+                    $station,
+                    $stationId,
+                    $permissions,
+                    $phone,
+                    '',
+                    $status,
+                    $remember,
+                ]
+            );
+            if ($role === 'customer') {
+                Database::run('INSERT INTO customers (user_id, default_address, aqua_points) VALUES (?, ?, ?)', [$id, '', 0]);
+            } elseif ($role === 'owner') {
+                Database::run('INSERT INTO station_owners (user_id, business_name) VALUES (?, ?)', [$id, $station]);
+            }
+            $pdo->commit();
+        } catch (\PDOException $e) {
+            $pdo->rollBack();
+            return ['error' => 'Database error: ' . $e->getMessage()];
+        }
 
         return ['user' => self::publicUser((array) self::findById($id))];
     }
@@ -197,8 +278,9 @@ final class Auth
         }
 
         Database::run(
-            'UPDATE users SET name = ?, email = ?, phone = ?, location = ? WHERE id = ?',
+            'UPDATE users SET name = ?, full_name = ?, email = ?, phone = ?, location = ? WHERE id = ?',
             [
+                $name,
                 $name,
                 $email,
                 mb_substr(trim((string) ($changes['phone'] ?? '')), 0, 40),
@@ -313,15 +395,15 @@ final class Auth
         return [
             'id'          => $row['id'],
             'email'       => $row['email'],
-            'name'        => $row['name'],
+            'name'        => (string) ($row['name'] ?? $row['full_name'] ?? ''),
             'role'        => $row['role'],
-            'subtitle'    => $row['subtitle'],
-            'station'     => (string) $row['station'],
-            'stationId'   => (string) $row['station_id'],
+            'subtitle'    => (string) ($row['subtitle'] ?? ''),
+            'station'     => (string) ($row['station'] ?? ''),
+            'stationId'   => (string) ($row['station_id'] ?? ''),
             'permissions' => is_array($permissions) ? $permissions : [],
-            'phone'       => (string) $row['phone'],
-            'location'    => (string) $row['location'],
-            'status'      => $row['status'],
+            'phone'       => (string) ($row['phone'] ?? ''),
+            'location'    => (string) ($row['location'] ?? ''),
+            'status'      => (string) ($row['status'] ?? 'active'),
             'createdAt'   => Dates::iso($row['created_at'] ?? null),
         ];
     }

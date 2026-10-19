@@ -1,25 +1,27 @@
 $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
-
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  $nodeDirectory = Join-Path $env:ProgramFiles "nodejs"
-  if (Test-Path (Join-Path $nodeDirectory "node.exe")) {
-    $env:PATH = "$nodeDirectory;$env:PATH"
+function Get-ListeningPid($port) {
+  $line = netstat -ano 2>$null | Select-String ":$port " | Select-Object -First 1
+  if ($line) { ($line -split '\s+')[-1] } else { $null }
+}
+# If old project server running on 3001, kill it (only if node.exe from this dir)
+$pid3001 = Get-ListeningPid 3001
+if ($pid3001) {
+  $proc = Get-Process -Id $pid3001 -ErrorAction SilentlyContinue
+  if ($proc -and $proc.ProcessName -eq 'node') {
+    Write-Host "Stopping old server (PID $pid3001)..."
+    Stop-Process -Id $pid3001 -Force
+    Start-Sleep -Seconds 1
   }
 }
-
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Error "Node.js is not installed. Install Node.js LTS from https://nodejs.org/ and run this launcher again."
-  exit 1
+# Find free port starting at 3001
+$port = 3001
+while ($true) {
+  $p = Get-ListeningPid $port
+  if (-not $p) { break }
+  $port += 1
+  if ($port -gt 3003) { Write-Error "No free port between 3001-3003"; exit 1 }
 }
-
-if (-not (Test-Path ".\node_modules\express\package.json")) {
-  Write-Host "Installing AquaTracker dependencies..."
-  npm install
-  if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-  }
-}
-
-Write-Host "Starting AquaTracker..."
+Write-Host "Starting AquaTracker on port $port ..."
+$env:PORT = $port
 node .\server.js

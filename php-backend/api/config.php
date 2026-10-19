@@ -21,7 +21,7 @@
 declare(strict_types=1);
 
 const AQ_DB_HOST = '127.0.0.1';
-const AQ_DB_PORT = 3307;
+const AQ_DB_PORT = 3306;
 const AQ_DB_NAME = 'aquatracker';
 const AQ_DB_USER = 'root';
 const AQ_DB_PASS = ''; // set it here only if you give root a password later
@@ -56,16 +56,29 @@ const AQ_ORDER_STATUSES = [
  */
 const AQ_ROLE_SECTIONS = [
     'customer' => [
-        'find-stations', 'order-water', 'my-subscriptions',
-        'orders-history', 'rewards', 'profile',
+        'find-stations',
+        'order-water',
+        'my-subscriptions',
+        'orders-history',
+        'rewards',
+        'profile',
     ],
     'owner' => [
-        'orders', 'subscriptions', 'customers', 'staff-approvals',
-        'promotions', 'pricing', 'station-settings', 'profile',
+        'orders',
+        'subscriptions',
+        'customers',
+        'staff-approvals',
+        'promotions',
+        'pricing',
+        'station-settings',
+        'profile',
     ],
     'staff' => [
-        'my-shifts', 'station-orders', 'inventory',
-        'customer-requests', 'profile',
+        'my-shifts',
+        'station-orders',
+        'inventory',
+        'customer-requests',
+        'profile',
     ],
 ];
 

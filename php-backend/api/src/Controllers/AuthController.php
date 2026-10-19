@@ -66,7 +66,9 @@ final class AuthController
             $password,
             $ctx->str('name'),
             $role,
-            $ctx->str('station')
+            $ctx->str('station'),
+            $ctx->str('phone'),
+            (int) $ctx->input('remember', 0)
         );
 
         if (isset($result['error'])) {

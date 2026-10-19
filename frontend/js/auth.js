@@ -14,6 +14,7 @@
   async function getCurrentUser() {
     try {
       const res = await fetch("/api/auth/me", {
+        credentials: "same-origin",
         headers: { Accept: "application/json" },
       });
       if (!res.ok) return null;
@@ -142,7 +143,7 @@
 
   async function logout() {
     try {
-      await fetch("/auth/logout", { method: "POST" });
+      await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     } catch (error) {
       console.warn("Server logout failed, proceeding with client clear", error);
     }
@@ -161,6 +162,7 @@
     if (!demoUser) return;
     try {
       const res = await fetch("/auth/login", {
+        credentials: "same-origin",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
