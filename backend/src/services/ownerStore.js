@@ -26,7 +26,7 @@ function writeJson(file, value) {
 
 export function getOwnerOverview(stationId) {
   const orders = listOrdersForStation(stationId);
-  const revenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const revenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
   const today = new Date().toISOString().slice(0, 10);
   const ordersToday = orders.filter(o => o.createdAt?.startsWith(today)).length;
   
@@ -84,7 +84,7 @@ export function getStationCustomers(stationId) {
         lastOrder: o.createdAt
       };
     }
-    customerMap[o.userId].totalSpent += o.total;
+    customerMap[o.userId].totalSpent += Number(o.total) || 0;
     customerMap[o.userId].orderCount += 1;
     if (new Date(o.createdAt) > new Date(customerMap[o.userId].lastOrder)) {
       customerMap[o.userId].lastOrder = o.createdAt;

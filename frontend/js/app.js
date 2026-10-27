@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8080";
+const API_BASE = (typeof window !== "undefined" && window.location && window.location.origin) ? window.location.origin : "";
 
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);

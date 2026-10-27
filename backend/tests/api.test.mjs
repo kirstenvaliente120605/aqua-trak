@@ -3,7 +3,7 @@
  * Exercises the real HTTP surface the browser uses, including the native
  * login form POST that sets the session cookie.
  */
-const BASE = "http://127.0.0.1:8080";
+const BASE = process.env.BASE_URL || "http://127.0.0.1:3001";
 
 let pass = 0;
 let fail = 0;

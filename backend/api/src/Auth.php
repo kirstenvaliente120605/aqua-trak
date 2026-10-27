@@ -25,7 +25,7 @@ final class Auth
         }
 
         $columns = array_fill_keys(
-            array_column(Database::all('SHOW COLUMNS FROM users'), 'Field'),
+            array_column(Database::all('SHOW COLUMNS FROM user'), 'Field'),
             true
         );
         if (!isset($columns['name']) && !isset($columns['full_name'])) {

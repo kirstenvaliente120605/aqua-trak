@@ -5,8 +5,9 @@
     "customerName": "Mia Santos",
     "subject": "Pickup time change",
     "message": "Can I collect my refill after 6 PM?",
-    "status": "Open",
-    "createdAt": "2026-09-22T08:41:53.315Z"
+    "status": "Resolved",
+    "createdAt": "2026-09-22T08:41:53.315Z",
+    "updatedAt": "2026-10-21T16:24:12.638Z"
   },
   {
     "id": "REQ-1002",

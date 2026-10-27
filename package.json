@@ -8,11 +8,13 @@
     "dev": "node --watch server.js",
     "start": "node server.js",
     "serve": "node server.js",
-    "check": "node --check server.js && node --check src/app.js && node --check src/routes/index.js && node --check src/models/demoData.js && node --check public/js/app.js",
+    "check": "node --check server.js && node --check backend/src/app.js && node --check backend/src/routes/index.js && node --check backend/src/services/authStore.js && node --check frontend/js/app.js && node --check frontend/js/auth.js",
+    "test": "node backend/tests/api.test.mjs && node backend/tests/stations.test.mjs",
     "format": "prettier --write src server.js public"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "mysql2": "^3.24.6"
   },
   "devDependencies": {
     "prettier": "^3.6.2"

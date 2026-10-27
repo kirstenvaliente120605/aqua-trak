@@ -6,6 +6,11 @@
 (function (global) {
   "use strict";
 
+  const API_BASE =
+    typeof window !== "undefined" && window.location && window.location.origin
+      ? window.location.origin
+      : "";
+
   const STORAGE_KEYS = {
     SESSION: "aquatracker_session_user",
     ALL_USERS: "aquatracker_registered_users",
@@ -13,7 +18,7 @@
 
   async function getCurrentUser() {
     try {
-      const res = await fetch(API_BASE + "/api/auth/me", {
+      const res = await fetch("/api/auth/me", {
         credentials: "same-origin",
         headers: { Accept: "application/json" },
       });
@@ -43,7 +48,9 @@
 
   async function login(email, password, requestedRole) {
     initAuthStorage();
-    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanEmail = String(email || "")
+      .trim()
+      .toLowerCase();
     const cleanPassword = String(password || "").trim();
     const demoAccounts = Object.values(global.AquaRoles?.DEMO_ACCOUNTS || {});
     let matchedUser = demoAccounts.find(
@@ -55,13 +62,18 @@
         const users = JSON.parse(
           localStorage.getItem(STORAGE_KEYS.ALL_USERS) || "[]"
         );
-        matchedUser = users.find(user => user.email.toLowerCase() === cleanEmail);
+        matchedUser = users.find(
+          user => user.email.toLowerCase() === cleanEmail
+        );
       } catch {
         matchedUser = null;
       }
     }
     if (!matchedUser) {
-      return { success: false, error: "No account found with this email address." };
+      return {
+        success: false,
+        error: "No account found with this email address.",
+      };
     }
     if (
       matchedUser.password &&
@@ -83,13 +95,15 @@
     setCurrentUser(user);
     const landing =
       global.AquaRoles?.getRoleConfig(user.role)?.defaultLanding ||
-      "/customer-dashboard.html";
+      `/dashboard/${user.role}`;
     return { success: true, user, redirectUrl: landing };
   }
 
   async function register(userData) {
     initAuthStorage();
-    const email = String(userData.email || "").trim().toLowerCase();
+    const email = String(userData.email || "")
+      .trim()
+      .toLowerCase();
     let users;
     try {
       users = JSON.parse(localStorage.getItem(STORAGE_KEYS.ALL_USERS) || "[]");
@@ -97,7 +111,10 @@
       users = [];
     }
     if (users.some(user => user.email.toLowerCase() === email)) {
-      return { success: false, error: "An account with this email already exists." };
+      return {
+        success: false,
+        error: "An account with this email already exists.",
+      };
     }
 
     const user = {
@@ -132,18 +149,22 @@
       ? global.AquaRoles.normalizeSessionUser(user)
       : user;
     setCurrentUser(normalized);
+    const landing =
+      global.AquaRoles?.getRoleConfig(normalized.role)?.defaultLanding ||
+      `/dashboard/${normalized.role}`;
     return {
       success: true,
       user: normalized,
-      redirectUrl:
-        global.AquaRoles?.getRoleConfig(normalized.role)?.defaultLanding ||
-        "/customer-dashboard.html",
+      redirectUrl: landing,
     };
   }
 
   async function logout() {
     try {
-      await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+      await fetch("/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
     } catch (error) {
       console.warn("Server logout failed, proceeding with client clear", error);
     }
@@ -173,8 +194,7 @@
       });
       if (res.ok) {
         window.location.href =
-          global.AquaRoles.ROLES[role]?.defaultLanding ||
-          "/customer-dashboard.html";
+          global.AquaRoles?.ROLES[role]?.defaultLanding || `/dashboard/${role}`;
       } else {
         alert("Demo login failed. Please check backend logs.");
       }
@@ -197,7 +217,7 @@
     if (user.role !== expectedRole) {
       const landing =
         global.AquaRoles?.ROLES[user.role]?.defaultLanding ||
-        "/customer-dashboard.html";
+        `/dashboard/${user.role}`;
       window.location.replace(landing);
       return null;
     }
@@ -279,7 +299,14 @@
         id: "AT-1048",
         stationId: "drink-refill",
         stationName: "ClearSpring Water Hub",
-        containers: [{ type: "5-gal-slim", label: "5-Gallon Slim Container", count: 2, unitPrice: 35 }],
+        containers: [
+          {
+            type: "5-gal-slim",
+            label: "5-Gallon Slim Container",
+            count: 2,
+            unitPrice: 35,
+          },
+        ],
         gallonsTotal: 2,
         fulfillment: "delivery",
         deliveryAddress: "Block 4, Lot 12, Sunrise Village, Brgy. San Jose",
@@ -293,10 +320,30 @@
         pointsEarned: 20,
         status: "out-for-delivery",
         timeline: [
-          { status: "pending", label: "Order Placed", time: "9:15 AM", done: true },
-          { status: "confirmed", label: "Confirmed & Refilled", time: "9:28 AM", done: true },
-          { status: "out-for-delivery", label: "Out for Delivery", time: "9:45 AM", done: true },
-          { status: "completed", label: "Delivered & Completed", time: "On the way", done: false },
+          {
+            status: "pending",
+            label: "Order Placed",
+            time: "9:15 AM",
+            done: true,
+          },
+          {
+            status: "confirmed",
+            label: "Confirmed & Refilled",
+            time: "9:28 AM",
+            done: true,
+          },
+          {
+            status: "out-for-delivery",
+            label: "Out for Delivery",
+            time: "9:45 AM",
+            done: true,
+          },
+          {
+            status: "completed",
+            label: "Delivered & Completed",
+            time: "On the way",
+            done: false,
+          },
         ],
         createdAt: now,
       },
@@ -304,7 +351,14 @@
         id: "AT-1042",
         stationId: "drink-refill",
         stationName: "ClearSpring Water Hub",
-        containers: [{ type: "5-gal-round", label: "5-Gallon Round Container", count: 4, unitPrice: 35 }],
+        containers: [
+          {
+            type: "5-gal-round",
+            label: "5-Gallon Round Container",
+            count: 4,
+            unitPrice: 35,
+          },
+        ],
         gallonsTotal: 4,
         fulfillment: "pickup",
         deliveryAddress: "Station Pickup Counter",
@@ -318,10 +372,30 @@
         pointsEarned: 40,
         status: "completed",
         timeline: [
-          { status: "pending", label: "Order Placed", time: "Sep 23, 2:00 PM", done: true },
-          { status: "confirmed", label: "Confirmed by Station", time: "Sep 23, 2:10 PM", done: true },
-          { status: "out-for-delivery", label: "Ready for Pickup", time: "Sep 23, 2:40 PM", done: true },
-          { status: "completed", label: "Completed", time: "Sep 23, 2:50 PM", done: true },
+          {
+            status: "pending",
+            label: "Order Placed",
+            time: "Sep 23, 2:00 PM",
+            done: true,
+          },
+          {
+            status: "confirmed",
+            label: "Confirmed by Station",
+            time: "Sep 23, 2:10 PM",
+            done: true,
+          },
+          {
+            status: "out-for-delivery",
+            label: "Ready for Pickup",
+            time: "Sep 23, 2:40 PM",
+            done: true,
+          },
+          {
+            status: "completed",
+            label: "Completed",
+            time: "Sep 23, 2:50 PM",
+            done: true,
+          },
         ],
         createdAt: `${today}T06:00:00.000Z`,
       },
@@ -352,16 +426,68 @@
       tier: "Silver Refiller",
       nextTierPoints: 500,
       history: [
-        { id: "lh-1", type: "earn", title: "Refill Order #AT-1048", points: 20, date: "Today" },
-        { id: "lh-2", type: "earn", title: "September Refill Streak", points: 25, date: "Sep 22, 2026" },
-        { id: "lh-3", type: "earn", title: "Refill Order #AT-1042", points: 60, date: "Sep 23, 2026" },
-        { id: "lh-4", type: "welcome", title: "Welcome Account Bonus", points: 50, date: "Sep 01, 2026" },
+        {
+          id: "lh-1",
+          type: "earn",
+          title: "Refill Order #AT-1048",
+          points: 20,
+          date: "Today",
+        },
+        {
+          id: "lh-2",
+          type: "earn",
+          title: "September Refill Streak",
+          points: 25,
+          date: "Sep 22, 2026",
+        },
+        {
+          id: "lh-3",
+          type: "earn",
+          title: "Refill Order #AT-1042",
+          points: 60,
+          date: "Sep 23, 2026",
+        },
+        {
+          id: "lh-4",
+          type: "welcome",
+          title: "Welcome Account Bonus",
+          points: 50,
+          date: "Sep 01, 2026",
+        },
       ],
       rewardsCatalog: [
-        { id: "rew-30-off", name: "P30 Refill Voucher", category: "Discount", pointsCost: 100, description: "P30 off your next refill order.", code: "AQUA30OFF" },
-        { id: "rew-70-off", name: "P70 Refill Voucher", category: "Discount", pointsCost: 200, description: "P70 off an order of two or more containers.", code: "AQUA70FREE" },
-        { id: "rew-caps", name: "Sanitary Cap & Seal Kit", category: "Merchandise", pointsCost: 150, description: "A pack of five sanitary water-container caps.", code: "FREE-CAPS5" },
-        { id: "rew-tumbler", name: "Insulated Water Tumbler", category: "Merchandise", pointsCost: 500, description: "A reusable insulated tumbler.", code: "CLAIM-TUMBLER" },
+        {
+          id: "rew-30-off",
+          name: "P30 Refill Voucher",
+          category: "Discount",
+          pointsCost: 100,
+          description: "P30 off your next refill order.",
+          code: "AQUA30OFF",
+        },
+        {
+          id: "rew-70-off",
+          name: "P70 Refill Voucher",
+          category: "Discount",
+          pointsCost: 200,
+          description: "P70 off an order of two or more containers.",
+          code: "AQUA70FREE",
+        },
+        {
+          id: "rew-caps",
+          name: "Sanitary Cap & Seal Kit",
+          category: "Merchandise",
+          pointsCost: 150,
+          description: "A pack of five sanitary water-container caps.",
+          code: "FREE-CAPS5",
+        },
+        {
+          id: "rew-tumbler",
+          name: "Insulated Water Tumbler",
+          category: "Merchandise",
+          pointsCost: 500,
+          description: "A reusable insulated tumbler.",
+          code: "CLAIM-TUMBLER",
+        },
       ],
     });
 
@@ -387,10 +513,54 @@
     seedIfMissing("aquatracker_saved_stations", ["drink-refill"]);
 
     const ownerOrders = [
-      { id: "AT-1048", userId: "usr-cust-001", customerName: "Mia Santos", stationId: "drink-refill", stationName: "ClearSpring Water Hub", gallons: 2, fulfillment: "delivery", status: "Preparing", total: 85, createdAt: now },
-      { id: "AT-1047", userId: "usr-cust-002", customerName: "Noah Garcia", stationId: "drink-refill", stationName: "ClearSpring Water Hub", gallons: 1, fulfillment: "pickup", status: "New order", total: 35, createdAt: now },
-      { id: "AT-1046", userId: "usr-cust-003", customerName: "Lia Mendoza", stationId: "drink-refill", stationName: "ClearSpring Water Hub", gallons: 4, fulfillment: "delivery", status: "Delivered", total: 126, createdAt: "2026-09-23T14:00:00.000Z" },
-      { id: "AT-1042", userId: "usr-cust-001", customerName: "Mia Santos", stationId: "drink-refill", stationName: "ClearSpring Water Hub", gallons: 2, fulfillment: "pickup", status: "Delivered", total: 70, createdAt: "2026-09-24T10:15:00.000Z" },
+      {
+        id: "AT-1048",
+        userId: "usr-cust-001",
+        customerName: "Mia Santos",
+        stationId: "drink-refill",
+        stationName: "ClearSpring Water Hub",
+        gallons: 2,
+        fulfillment: "delivery",
+        status: "Preparing",
+        total: 85,
+        createdAt: now,
+      },
+      {
+        id: "AT-1047",
+        userId: "usr-cust-002",
+        customerName: "Noah Garcia",
+        stationId: "drink-refill",
+        stationName: "ClearSpring Water Hub",
+        gallons: 1,
+        fulfillment: "pickup",
+        status: "New order",
+        total: 35,
+        createdAt: now,
+      },
+      {
+        id: "AT-1046",
+        userId: "usr-cust-003",
+        customerName: "Lia Mendoza",
+        stationId: "drink-refill",
+        stationName: "ClearSpring Water Hub",
+        gallons: 4,
+        fulfillment: "delivery",
+        status: "Delivered",
+        total: 126,
+        createdAt: "2026-09-23T14:00:00.000Z",
+      },
+      {
+        id: "AT-1042",
+        userId: "usr-cust-001",
+        customerName: "Mia Santos",
+        stationId: "drink-refill",
+        stationName: "ClearSpring Water Hub",
+        gallons: 2,
+        fulfillment: "pickup",
+        status: "Delivered",
+        total: 70,
+        createdAt: "2026-09-24T10:15:00.000Z",
+      },
     ];
 
     seedIfMissing("aquatracker_business_stations_db", [
@@ -406,8 +576,22 @@
     ]);
     seedIfMissing("aquatracker_orders_db", ownerOrders);
     seedIfMissing("aquatracker_users_db", [
-      { userId: "usr-stf-001", name: "Dani Cruz", email: "staff.demo@example.com", role: "staff", stationId: "drink-refill", status: "active" },
-      { userId: "usr-stf-002", name: "Alex Rivera", email: "alex.rivera@example.com", role: "staff", stationId: "drink-refill", status: "active" },
+      {
+        userId: "usr-stf-001",
+        name: "Dani Cruz",
+        email: "staff.demo@example.com",
+        role: "staff",
+        stationId: "drink-refill",
+        status: "active",
+      },
+      {
+        userId: "usr-stf-002",
+        name: "Alex Rivera",
+        email: "alex.rivera@example.com",
+        role: "staff",
+        stationId: "drink-refill",
+        status: "active",
+      },
     ]);
     seedIfMissing("aquatracker_inventory_db", {
       "drink-refill": { caps: 86, seals: 64, bottles: 42 },
@@ -419,27 +603,115 @@
       },
     });
     seedIfMissing("aquatracker_promotions_db", [
-      { id: "promo-free-delivery", stationId: "drink-refill", name: "Free Delivery Weekend", detail: "Free delivery on orders of 4+ gallons.", status: "Active", redemptions: 18 },
-      { id: "promo-returning", stationId: "drink-refill", name: "Returning Customer Refill", detail: "10% off your next refill.", status: "Scheduled", redemptions: 7 },
+      {
+        id: "promo-free-delivery",
+        stationId: "drink-refill",
+        name: "Free Delivery Weekend",
+        detail: "Free delivery on orders of 4+ gallons.",
+        status: "Active",
+        redemptions: 18,
+      },
+      {
+        id: "promo-returning",
+        stationId: "drink-refill",
+        name: "Returning Customer Refill",
+        detail: "10% off your next refill.",
+        status: "Scheduled",
+        redemptions: 7,
+      },
     ]);
     seedIfMissing("aquatracker_notifications_db", [
-      { id: "owner-note-1", stationId: "drink-refill", title: "Orders in progress", message: "Two orders are ready for fulfillment today.", type: "order", read: false, time: "Today" },
-      { id: "owner-note-2", stationId: "drink-refill", title: "Weekly performance", message: "Orders are up 12% compared with last week.", type: "business", read: true, time: "Yesterday" },
+      {
+        id: "owner-note-1",
+        stationId: "drink-refill",
+        title: "Orders in progress",
+        message: "Two orders are ready for fulfillment today.",
+        type: "order",
+        read: false,
+        time: "Today",
+      },
+      {
+        id: "owner-note-2",
+        stationId: "drink-refill",
+        title: "Weekly performance",
+        message: "Orders are up 12% compared with last week.",
+        type: "business",
+        read: true,
+        time: "Yesterday",
+      },
     ]);
     seedIfMissing("aquatracker_station_subscriptions_db", [
-      { id: "station-sub-1", stationId: "drink-refill", customerName: "Mia Santos", planName: "Monthly Essentials", gallons: 4, frequency: "Monthly", estimatedTotal: 126, status: "Active", nextRefill: "2026-10-03" },
-      { id: "station-sub-2", stationId: "drink-refill", customerName: "Paolo Reyes", planName: "Family Refill Plan", gallons: 8, frequency: "Monthly", estimatedTotal: 238, status: "Active", nextRefill: "2026-10-05" },
+      {
+        id: "station-sub-1",
+        stationId: "drink-refill",
+        customerName: "Mia Santos",
+        planName: "Monthly Essentials",
+        gallons: 4,
+        frequency: "Monthly",
+        estimatedTotal: 126,
+        status: "Active",
+        nextRefill: "2026-10-03",
+      },
+      {
+        id: "station-sub-2",
+        stationId: "drink-refill",
+        customerName: "Paolo Reyes",
+        planName: "Family Refill Plan",
+        gallons: 8,
+        frequency: "Monthly",
+        estimatedTotal: 238,
+        status: "Active",
+        nextRefill: "2026-10-05",
+      },
     ]);
     seedIfMissing("aquatracker_staff_shifts_db", [
-      { id: "shift-1", stationId: "drink-refill", staffId: "usr-stf-001", date: today, start: "08:00", end: "16:00", status: "Scheduled" },
-      { id: "shift-2", stationId: "drink-refill", staffId: "usr-stf-001", date: today, start: "14:00", end: "21:00", status: "Scheduled" },
+      {
+        id: "shift-1",
+        stationId: "drink-refill",
+        staffId: "usr-stf-001",
+        date: today,
+        start: "08:00",
+        end: "16:00",
+        status: "Scheduled",
+      },
+      {
+        id: "shift-2",
+        stationId: "drink-refill",
+        staffId: "usr-stf-001",
+        date: today,
+        start: "14:00",
+        end: "21:00",
+        status: "Scheduled",
+      },
     ]);
     seedIfMissing("aquatracker_customer_requests_db", [
-      { id: "REQ-1001", stationId: "drink-refill", customerName: "Mia Santos", subject: "Pickup time change", message: "Can I collect my refill after 6 PM?", status: "Open", createdAt: now },
-      { id: "REQ-1002", stationId: "drink-refill", customerName: "Noah Garcia", subject: "Container return", message: "I have two empty containers to return.", status: "In progress", createdAt: now },
+      {
+        id: "REQ-1001",
+        stationId: "drink-refill",
+        customerName: "Mia Santos",
+        subject: "Pickup time change",
+        message: "Can I collect my refill after 6 PM?",
+        status: "Open",
+        createdAt: now,
+      },
+      {
+        id: "REQ-1002",
+        stationId: "drink-refill",
+        customerName: "Noah Garcia",
+        subject: "Container return",
+        message: "I have two empty containers to return.",
+        status: "In progress",
+        createdAt: now,
+      },
     ]);
     seedIfMissing("aquatracker_staff_approvals_db", [
-      { id: "approval-1", stationId: "drink-refill", name: "Alex Rivera", email: "alex.rivera@example.com", status: "Pending" },
+      {
+        id: "approval-1",
+        stationId: "drink-refill",
+        name: "Alex Rivera",
+        email: "alex.rivera@example.com",
+        status: "Pending",
+      },
     ]);
   }
 

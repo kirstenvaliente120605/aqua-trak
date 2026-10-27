@@ -58,5 +58,38 @@
     "status": "Delivered",
     "total": 60,
     "createdAt": "2026-09-25T14:30:00Z"
+  },
+  {
+    "id": "AT-2006",
+    "userId": "1091441b-8b27-4734-99ee-53ade1cb59a0",
+    "customerName": "Customer Demo",
+    "station": {
+      "id": "drink-refill",
+      "name": "DRINK n' REFILL Purified Water Refilling Station",
+      "area": "45 Sabellano St, Pagadian City",
+      "address": "45 Sabellano St, San Jose District, Pagadian City",
+      "phone": "0918 962 5038",
+      "hours": "Mon-Sat 7:30 AM-5:00 PM",
+      "coords": {
+        "lat": 7.8269,
+        "lng": 123.4371
+      },
+      "pricePerGallon": 35,
+      "delivery": true,
+      "rating": 4.9
+    },
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 10,
+    "fulfillment": "delivery",
+    "status": "Preparing",
+    "unitPrice": 35,
+    "subtotal": 350,
+    "discountRate": 0.15,
+    "discount": 52.5,
+    "total": 297.5,
+    "createdAt": "2026-10-21T16:24:12.387Z",
+    "internalNote": "Filling containers",
+    "updatedAt": "2026-10-21T16:24:12.579Z"
   }
 ]

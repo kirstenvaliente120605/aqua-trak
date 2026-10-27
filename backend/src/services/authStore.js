@@ -1,62 +1,23 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import mysql from "mysql2/promise";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../");
-const dataDir = path.join(root, "data");
-const usersFile = path.join(dataDir, "users.json");
-const sessionsFile = path.join(dataDir, "sessions.json");
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || "127.0.0.1",
+  port: Number(process.env.DB_PORT) || 3306,
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASS || "",
+  database: process.env.DB_NAME || "aquatracker",
+  waitForConnections: true,
+  connectionLimit: 10,
+});
+
 const sessionTtlMs = Number(process.env.SESSION_TTL_MS) || 1000 * 60 * 60 * 24 * 7;
 
-const demoUsers = [
+export const demoUsers = [
   { email: "customer.demo@example.com", password: "CustomerDemo123!", name: "Customer Demo", role: "customer", subtitle: "Customer account", status: "active" },
   { email: "owner.demo@example.com", password: "OwnerDemo123!", name: "Owner Demo", role: "owner", subtitle: "ClearSpring Water Hub", station: "ClearSpring Water Hub", status: "active" },
   { email: "staff.demo@example.com", password: "StaffDemo123!", name: "Staff Demo", role: "staff", subtitle: "Station staff", station: "ClearSpring Water Hub", stationId: "drink-refill", permissions: ["orders", "inventory", "requests"], status: "active" },
 ];
-
-function ensureStore() {
-  fs.mkdirSync(dataDir, { recursive: true });
-  const users = fs.existsSync(usersFile) ? readJsonFile(usersFile, []) : [];
-  let changed = false;
-  for (const demo of demoUsers) {
-    const existing = users.find((user) => user.email === demo.email);
-    if (!existing) {
-      users.push(toStoredUser(demo));
-      changed = true;
-      continue;
-    }
-    const expectedSubtitle = demo.subtitle;
-    if (existing.role !== demo.role || existing.name !== demo.name || existing.subtitle !== expectedSubtitle || existing.station !== (demo.station || "") || existing.stationId !== (demo.stationId || "") || !Array.isArray(existing.permissions) || existing.status !== "active") {
-      Object.assign(existing, { name: demo.name, role: demo.role, subtitle: expectedSubtitle, station: demo.station || "", stationId: demo.stationId || existing.stationId || "", permissions: demo.permissions || existing.permissions || [], status: "active" });
-      changed = true;
-    }
-    if (!verifyPassword(demo.password, existing.passwordHash)) {
-      existing.passwordHash = hashPassword(demo.password);
-      changed = true;
-    }
-  }
-  if (changed || !fs.existsSync(usersFile)) writeJson(usersFile, users);
-  if (!fs.existsSync(sessionsFile)) writeJson(sessionsFile, {});
-}
-
-function readJsonFile(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch (error) {
-    console.error(`Unable to read ${file}:`, error);
-    return fallback;
-  }
-}
-
-function readJson(file, fallback) {
-  ensureStore();
-  return readJsonFile(file, fallback);
-}
-
-function writeJson(file, value) {
-  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`;
@@ -75,123 +36,176 @@ function verifyPassword(password, stored) {
   }
 }
 
-function toStoredUser(user) {
+function safeJsonParse(value, fallback = []) {
+  if (!value) return fallback;
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function rowToUser(u) {
+  if (!u) return null;
   return {
-    id: crypto.randomUUID(),
-    email: user.email.toLowerCase(),
-    passwordHash: hashPassword(user.password),
-    name: user.name,
-    role: user.role,
-    subtitle: user.subtitle,
-    station: user.station || "",
-    stationId: user.stationId || "",
-    permissions: user.permissions || (user.role === "staff" ? ["orders", "inventory", "requests"] : []),
-    phone: user.phone || "",
-    location: user.location || "",
-    status: user.status || "active",
-    createdAt: new Date().toISOString(),
+    id: u.id,
+    email: u.email,
+    role: u.role,
+    name: u.name || u.full_name || "",
+    subtitle: u.subtitle || "",
+    station: u.station || "",
+    stationId: u.station_id || "",
+    permissions: safeJsonParse(u.permissions, u.role === "staff" ? ["orders", "inventory", "requests"] : []),
+    phone: u.phone || "",
+    location: u.location || "",
+    status: u.status || "active",
+    passwordHash: u.passwordHash || u.password_hash,
   };
 }
 
-export function listUsers() {
-  return readJson(usersFile, []).map(({ passwordHash, ...user }) => user);
+export async function ensureDemoUsers() {
+  try {
+    for (const demo of demoUsers) {
+      const existing = await findUserByEmail(demo.email);
+      const hash = hashPassword(demo.password);
+      const perms = demo.permissions ? JSON.stringify(demo.permissions) : null;
+      if (!existing) {
+        const id = crypto.randomUUID();
+        await pool.execute(
+          "INSERT INTO user (id, email, password_hash, role, full_name, name, subtitle, station, station_id, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, demo.email.toLowerCase(), hash, demo.role, demo.name, demo.name, demo.subtitle || "", demo.station || "", demo.stationId || "", perms, "active"]
+        );
+      } else {
+        await pool.execute(
+          "UPDATE users SET password_hash = ?, status = 'active', full_name = ?, name = ? WHERE email = ?",
+          [hash, demo.name, demo.name, demo.email.toLowerCase()]
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Failed to seed demo users in MySQL:", err.message);
+  }
 }
 
-export function listStaffApprovals(station) {
-  const normalizedStation = String(station || "").trim().toLowerCase();
-  return listUsers().filter((user) => user.role === "staff" && user.status === "pending" && user.station.toLowerCase() === normalizedStation);
+// Auto-seed on load
+ensureDemoUsers();
+
+export async function listUsers() {
+  const [rows] = await pool.execute("SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, phone, location, status FROM user");
+  return rows.map(rowToUser);
 }
 
-export function updateStaffApproval(id, station, decision) {
-  ensureStore();
-  const users = readJson(usersFile, []);
-  const user = users.find((candidate) => candidate.id === id);
-  const normalizedStation = String(station || "").trim().toLowerCase();
-  if (!user || user.role !== "staff" || user.status !== "pending" || user.station.toLowerCase() !== normalizedStation) return null;
+export async function listStaffApprovals(station) {
+  const normalizedStation = String(station || "").trim();
+  const query = normalizedStation
+    ? "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE role = 'staff' AND status = 'pending' AND station = ?"
+    : "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE role = 'staff' AND status = 'pending'";
+  const params = normalizedStation ? [normalizedStation] : [];
+  const [rows] = await pool.execute(query, params);
+  return rows.map(rowToUser);
+}
+
+export async function updateStaffApproval(id, station, decision) {
   if (!["approve", "reject"].includes(decision)) return null;
-  user.status = decision === "approve" ? "active" : "rejected";
-  user.reviewedAt = new Date().toISOString();
-  writeJson(usersFile, users);
-  return { ...user, passwordHash: undefined };
+  const status = decision === "approve" ? "active" : "rejected";
+  const normalizedStation = String(station || "").trim();
+  const query = normalizedStation
+    ? "UPDATE users SET status = ? WHERE id = ? AND role = 'staff' AND status = 'pending' AND station = ?"
+    : "UPDATE users SET status = ? WHERE id = ? AND role = 'staff' AND status = 'pending'";
+  const params = normalizedStation ? [status, id, normalizedStation] : [status, id];
+  const [result] = await pool.execute(query, params);
+  if (result.affectedRows === 0) return null;
+  const [rows] = await pool.execute("SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE id = ?", [id]);
+  return rowToUser(rows[0]);
 }
 
-export function findUserByEmail(email) {
+export async function findUserByEmail(email) {
   const normalized = String(email || "").trim().toLowerCase();
-  return readJson(usersFile, []).find((user) => user.email === normalized) || null;
+  const [rows] = await pool.execute(
+    "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status, phone, location, password_hash as passwordHash FROM user WHERE email = ?",
+    [normalized]
+  );
+  return rowToUser(rows[0]);
 }
 
-export function createUser({ email, password, name, role, station = "" }) {
-  ensureStore();
-  const users = readJson(usersFile, []);
+export async function createUser({ email, password, name, role, station = "" }) {
   const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return { error: "Please enter a valid email address." };
+  if (!password || String(password).length < 8) return { error: "Password must be at least 8 characters." };
   const trimmedName = String(name || "").trim();
-  const trimmedStation = String(station || "").trim();
-  if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
-    return { error: "Please enter a valid email address." };
-  }
-  if (!password || String(password).length < 8) {
-    return { error: "Password must be at least 8 characters." };
-  }
-  if (!trimmedName || trimmedName.length > 100 || !["customer", "owner", "staff"].includes(role)) {
-    return { error: "Please complete all required fields." };
-  }
-  if (findUserByEmail(normalized)) return { error: "An account with that email already exists." };
-  if (role !== "customer" && !trimmedStation) return { error: "Station name is required for this role." };
-  const user = toStoredUser({ email: normalized, password, name: trimmedName, role, station: trimmedStation, stationId: role === "staff" ? "drink-refill" : "", status: role === "staff" ? "pending" : "active", subtitle: role === "owner" ? trimmedStation || "Station owner" : role === "staff" ? "Station staff" : "Customer account" });
-  users.push(user);
-  writeJson(usersFile, users);
-  return { user };
+  if (!trimmedName || trimmedName.length > 100 || !["customer", "owner", "staff"].includes(role)) return { error: "Please complete all required fields." };
+  const existing = await findUserByEmail(normalized);
+  if (existing) return { error: "An account with that email already exists." };
+
+  const id = crypto.randomUUID();
+  const hash = hashPassword(password);
+  const stationTrim = String(station || "").trim();
+  const subtitle = role === "owner" ? stationTrim : (role === "staff" ? "Station staff" : "Customer account");
+  const stationId = role === "staff" ? "drink-refill" : "";
+  const permissions = role === "staff" ? JSON.stringify(["orders", "inventory", "requests"]) : null;
+  const status = role === "staff" ? "pending" : "active";
+
+  await pool.execute(
+    "INSERT INTO user (id, email, password_hash, role, full_name, name, subtitle, station, station_id, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, normalized, hash, role, trimmedName, trimmedName, subtitle, stationTrim, stationId, permissions, status]
+  );
+
+  const [rows] = await pool.execute(
+    "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE id = ?",
+    [id]
+  );
+  return { user: rowToUser(rows[0]) };
 }
 
-export function updateUserProfile(id, changes) {
-  ensureStore();
-  const users = readJson(usersFile, []);
-  const user = users.find((candidate) => candidate.id === id);
-  if (!user) return null;
+export async function updateUserProfile(id, changes) {
   const name = String(changes.name || "").trim();
   const email = String(changes.email || "").trim().toLowerCase();
   if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid name and email address." };
-  const duplicate = users.find((candidate) => candidate.id !== id && candidate.email === email);
-  if (duplicate) return { error: "That email address is already in use." };
-  Object.assign(user, { name, email, phone: String(changes.phone || "").trim().slice(0, 40), location: String(changes.location || "").trim().slice(0, 120) });
-  writeJson(usersFile, users);
-  const { passwordHash, ...safeUser } = user;
-  return safeUser;
+  const [dup] = await pool.execute("SELECT id FROM user WHERE email = ? AND id != ?", [email, id]);
+  if (dup.length) return { error: "That email address is already in use." };
+  await pool.execute(
+    "UPDATE users SET full_name = ?, name = ?, email = ?, phone = ?, location = ? WHERE id = ?",
+    [name, name, email, String(changes.phone || "").trim().slice(0, 40), String(changes.location || "").trim().slice(0, 120), id]
+  );
+  const [rows] = await pool.execute("SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, phone, location, status FROM user WHERE id = ?", [id]);
+  return rowToUser(rows[0]);
 }
 
-export function authenticate(email, password) {
-  const user = findUserByEmail(email);
+export async function authenticate(email, password) {
+  const user = await findUserByEmail(email);
   if (!user || user.status !== "active" || !verifyPassword(password, user.passwordHash)) return null;
   return user;
 }
 
-export function createSession(user) {
-  const sessions = readJson(sessionsFile, {});
+export async function createSession(user) {
+  if (!user || !user.id) return null;
   const token = crypto.randomBytes(32).toString("hex");
-  sessions[token] = { userId: user.id, expiresAt: Date.now() + sessionTtlMs };
-  writeJson(sessionsFile, sessions);
+  const expiresAt = new Date(Date.now() + sessionTtlMs);
+  await pool.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)", [token, user.id, expiresAt]);
   return token;
 }
 
-export function getSessionUser(token) {
+export async function getSessionUser(token) {
   if (!token) return null;
-  const sessions = readJson(sessionsFile, {});
-  const session = sessions[token];
+  const [rows] = await pool.execute("SELECT token, user_id, expires_at FROM sessions WHERE token = ?", [token]);
+  const session = rows[0];
   if (!session) return null;
-  if (session.expiresAt <= Date.now()) {
-    delete sessions[token];
-    writeJson(sessionsFile, sessions);
+  if (new Date(session.expires_at) <= new Date()) {
+    await pool.execute("DELETE FROM sessions WHERE token = ?", [token]);
     return null;
   }
-  return readJson(usersFile, []).find((user) => user.id === session.userId) || null;
+  const [users] = await pool.execute(
+    "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status, phone, location FROM user WHERE id = ?",
+    [session.user_id]
+  );
+  return rowToUser(users[0]);
 }
 
-export function destroySession(token) {
-  const sessions = readJson(sessionsFile, {});
-  if (token && sessions[token]) {
-    delete sessions[token];
-    writeJson(sessionsFile, sessions);
-  }
+export async function destroySession(token) {
+  if (!token) return;
+  await pool.execute("DELETE FROM sessions WHERE token = ?", [token]);
 }
 
-ensureStore();
+export { pool };

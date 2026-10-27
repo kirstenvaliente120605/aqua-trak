@@ -13,5 +13,21 @@
     "status": "Active",
     "nextRefill": "2026-10-22T08:12:25.129Z",
     "createdAt": "2026-09-22T08:12:25.129Z"
+  },
+  {
+    "id": "SUB-90AEFC66",
+    "userId": "1091441b-8b27-4734-99ee-53ade1cb59a0",
+    "customerName": "Customer Demo",
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 5,
+    "frequency": "weekly",
+    "unitPrice": 35,
+    "discountRate": 0.1,
+    "estimatedTotal": 141.75,
+    "status": "Cancelled",
+    "nextRefill": "2026-11-20T16:24:12.410Z",
+    "createdAt": "2026-10-21T16:24:12.410Z",
+    "cancelledAt": "2026-10-21T16:24:12.423Z"
   }
 ]

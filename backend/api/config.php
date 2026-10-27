@@ -11,7 +11,7 @@
  * deadlocked inside InnoDB and killed itself, so it cannot host the database.
  * The header of my-aquatracker.ini has the full detail.
  *
- * Port 3307 rather than the usual 3306 so this instance can never collide with
+ * Port 3306 (XAMPP standard) so this instance can never collide with
  * another MySQL or MariaDB server started later on the default port.
  *
  * The instance is initialised with an empty root password, which is why

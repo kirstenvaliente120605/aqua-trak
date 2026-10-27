@@ -1,1 +1,6 @@
-{}
+{
+  "drink-refill": {
+    "5-gallon": 40,
+    "2.5-gallon": 22
+  }
+}

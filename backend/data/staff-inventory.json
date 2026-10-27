@@ -16,9 +16,43 @@
   {
     "id": "sanitizer",
     "name": "Sanitizer solution",
-    "quantity": 8,
+    "quantity": 6,
     "reorderAt": 4,
-    "unit": "bottles"
+    "unit": "bottles",
+    "reports": [
+      {
+        "id": "91f9a969-bcaf-4de2-877c-43e8d08c68de",
+        "type": "damage",
+        "amount": 2,
+        "note": "Two bottles cracked",
+        "staffId": "9479a77b-1ebb-4fa4-bd77-a519f6720d99",
+        "createdAt": "2026-10-21T16:21:21.435Z"
+      },
+      {
+        "id": "4f0954f4-a7a7-490b-a404-f0e2864ccc8b",
+        "type": "return",
+        "amount": 1,
+        "note": "",
+        "staffId": "9479a77b-1ebb-4fa4-bd77-a519f6720d99",
+        "createdAt": "2026-10-21T16:21:21.443Z"
+      },
+      {
+        "id": "6ff1d9c5-e599-42d6-bb7d-398fc730e48e",
+        "type": "damage",
+        "amount": 2,
+        "note": "Two bottles cracked",
+        "staffId": "9479a77b-1ebb-4fa4-bd77-a519f6720d99",
+        "createdAt": "2026-10-21T16:24:12.613Z"
+      },
+      {
+        "id": "43ea95a9-8173-4a64-a5e1-0dbc0287b3ca",
+        "type": "return",
+        "amount": 1,
+        "note": "",
+        "staffId": "9479a77b-1ebb-4fa4-bd77-a519f6720d99",
+        "createdAt": "2026-10-21T16:24:12.625Z"
+      }
+    ]
   },
   {
     "id": "delivery-crates",

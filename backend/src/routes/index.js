@@ -92,10 +92,52 @@ const sendPage =
 router.get("/", sendPage("index.html"));
 router.get("/client/index.html", (_req, res) => res.redirect("/"));
 
-router.get("/auth/logout", (req, res) => {
-  destroySession(parseCookies(req.headers.cookie || "")[sessionCookie]);
+// Universal logout handler (GET and POST)
+const handleLogout = async (req, res) => {
+  const token = parseCookies(req.headers.cookie || "")[sessionCookie];
+  if (token) {
+    await destroySession(token);
+  }
   clearSessionCookie(res);
-  res.redirect("/");
+  if (req.headers.accept?.includes("application/json")) {
+    return res.json({ success: true, message: "Logged out successfully" });
+  }
+  return res.redirect("/");
+};
+router.get("/auth/logout", handleLogout);
+router.post("/auth/logout", handleLogout);
+
+// AJAX JSON login endpoint
+router.post("/auth/login", async (req, res) => {
+  const { email, password, role } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required." });
+  }
+  const user = await authenticate(email, password);
+  if (!user) {
+    return res.status(401).json({ error: "Invalid email or password." });
+  }
+  if (role && user.role !== role) {
+    return res.status(403).json({ error: `Account is registered as ${user.role}, not ${role}.` });
+  }
+  const token = await createSession(user);
+  setSessionCookie(res, token);
+  return res.json({
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      subtitle: user.subtitle,
+      station: user.station,
+      stationId: user.stationId,
+      permissions: user.permissions,
+      phone: user.phone,
+      location: user.location,
+    },
+    redirectUrl: `/dashboard/${user.role}`,
+  });
 });
 
 router.get("/api/auth/me", (req, res) => {
@@ -104,16 +146,17 @@ router.get("/api/auth/me", (req, res) => {
   return res.json({ authenticated: true, user });
 });
 
-router.get("/api/staff-approvals", requireAuth, (req, res) => {
+router.get("/api/staff-approvals", requireAuth, async (req, res) => {
   if (req.user.role !== "owner")
     return res.status(403).json({ error: "Owner access required." });
-  return res.json({ approvals: listStaffApprovals(req.user.station) });
+  const approvals = await listStaffApprovals(req.user.station);
+  return res.json({ approvals });
 });
 
-router.post("/api/staff-approvals/:id", requireAuth, (req, res) => {
+router.post("/api/staff-approvals/:id", requireAuth, async (req, res) => {
   if (req.user.role !== "owner")
     return res.status(403).json({ error: "Owner access required." });
-  const updated = updateStaffApproval(
+  const updated = await updateStaffApproval(
     req.params.id,
     req.user.station,
     req.body.decision
@@ -123,10 +166,11 @@ router.post("/api/staff-approvals/:id", requireAuth, (req, res) => {
   return res.json({ approval: updated });
 });
 
-router.get("/api/stations", requireAuth, (req, res) => {
+router.get("/api/stations", requireAuth, async (req, res) => {
   if (req.user.role !== "customer")
     return res.status(403).json({ error: "Customer access required." });
-  return res.json({ stations: getStationCatalog() });
+  const stations = await getStationCatalog();
+  return res.json({ stations });
 });
 
 router.get("/api/orders", requireAuth, (req, res) => {
@@ -261,8 +305,8 @@ router.patch(
 router.get("/api/staff/notifications", requireAuth, requireStaff, (req, res) =>
   res.json({ notifications: listNotifications(req.user) })
 );
-router.patch("/api/staff/profile", requireAuth, requireStaff, (req, res) => {
-  const result = updateUserProfile(req.user.id, req.body);
+router.patch("/api/staff/profile", requireAuth, requireStaff, async (req, res) => {
+  const result = await updateUserProfile(req.user.id, req.body);
   return result?.error
     ? res.status(400).json(result)
     : result
@@ -279,7 +323,7 @@ router.get("/auth/:role/:mode", (req, res) => {
   return sendPage("auth.html")(req, res);
 });
 
-router.post("/auth/:role/:mode", (req, res) => {
+router.post("/auth/:role/:mode", async (req, res) => {
   if (
     !roles.has(req.params.role) ||
     !["login", "register"].includes(req.params.mode)
@@ -293,7 +337,7 @@ router.post("/auth/:role/:mode", (req, res) => {
     return res.redirect(`/auth/${role}/register?error=passwords`);
   }
   if (req.params.mode === "register") {
-    const result = createUser({
+    const result = await createUser({
       email: req.body.email,
       password: req.body.password,
       name: req.body.name,
@@ -306,73 +350,69 @@ router.post("/auth/:role/:mode", (req, res) => {
       );
     if (role === "staff")
       return res.redirect("/auth/staff/login?notice=staff-pending");
-    const token = createSession(result.user);
+    const token = await createSession(result.user);
     setSessionCookie(res, token);
     return res.redirect(`/dashboard/${role}`);
   }
-  const pendingUser = findUserByEmail(req.body.email);
+  const pendingUser = await findUserByEmail(req.body.email);
   if (pendingUser?.role === role && pendingUser.status === "pending")
     return res.redirect(`/auth/${role}/login?notice=staff-pending`);
-  const user = authenticate(req.body.email, req.body.password);
+  const user = await authenticate(req.body.email, req.body.password);
   if (!user) return res.redirect(`/auth/${role}/login?error=invalid`);
   if (user.role !== role) return res.redirect(`/auth/${role}/login?error=role`);
-  const token = createSession(user);
+  const token = await createSession(user);
   setSessionCookie(res, token);
-  return res.redirect(`/dashboard/${role}`);
+  return res.redirect(`/dashboard/${user.role}`);
 });
 
-router.get("/customer-dashboard.html", (_req, res) => {
-  res.sendFile(path.resolve(frontendPages, "customer-dashboard.html"));
-});
-router.get("/owner-dashboard.html", (_req, res) => {
-  res.sendFile(path.resolve(frontendPages, "owner-dashboard.html"));
-});
-router.get("/staff-dashboard.html", (_req, res) => {
-  res.sendFile(path.resolve(frontendPages, "staff-dashboard.html"));
+// HTML dashboard entry paths
+router.get("/customer-dashboard.html", sendPage("customer-dashboard.html"));
+router.get("/owner-dashboard.html", sendPage("owner-dashboard.html"));
+router.get("/staff-dashboard.html", sendPage("staff-dashboard.html"));
+
+router.get("/pages/customer-dashboard.html", sendPage("customer-dashboard.html"));
+router.get("/pages/owner-dashboard.html", sendPage("owner-dashboard.html"));
+router.get("/pages/staff-dashboard.html", sendPage("staff-dashboard.html"));
+
+// Role-protected dashboard routes
+router.get("/dashboard/customer", requireAuth, (req, res) => {
+  if (req.user.role !== "customer") return res.redirect(`/dashboard/${req.user.role}`);
+  return res.sendFile(path.resolve(frontendPages, "customer-dashboard.html"));
 });
 
-router.get("/dashboard/customer", requireAuth, (_req, res) => {
-  res.sendFile(path.resolve(frontendPages, "customer-dashboard.html"));
+router.get("/dashboard/owner", requireAuth, (req, res) => {
+  if (req.user.role !== "owner") return res.redirect(`/dashboard/${req.user.role}`);
+  return res.sendFile(path.resolve(frontendPages, "owner-dashboard.html"));
 });
-router.get("/dashboard/owner", requireAuth, (_req, res) => {
-  res.sendFile(path.resolve(frontendPages, "owner-dashboard.html"));
-});
-router.get("/dashboard/staff", requireAuth, (_req, res) => {
-  res.sendFile(path.resolve(frontendPages, "staff-dashboard.html"));
+
+router.get("/dashboard/staff", requireAuth, (req, res) => {
+  if (req.user.role !== "staff") return res.redirect(`/dashboard/${req.user.role}`);
+  return res.sendFile(path.resolve(frontendPages, "staff-dashboard.html"));
 });
 
 router.get("/dashboard/:role/profile", requireAuth, (req, res) => {
-  if (req.params.role === "customer")
-    return res.redirect("/customer-dashboard.html#profile");
-  if (req.params.role === "owner")
-    return res.redirect("/owner-dashboard.html#profile");
-  if (req.params.role === "staff")
-    return res.redirect("/staff-dashboard.html#profile");
-  return res.redirect(`/dashboard/${req.user.role}`);
+  const role = req.params.role;
+  if (!roles.has(role)) return res.redirect(`/dashboard/${req.user.role}`);
+  if (req.user.role !== role) return res.redirect(`/dashboard/${req.user.role}`);
+  return res.sendFile(path.resolve(frontendPages, `${role}-dashboard.html`));
 });
+
 router.get("/dashboard/:role/:section", requireAuth, (req, res) => {
-  if (req.params.role === "customer")
-    return res.redirect(`/customer-dashboard.html#${req.params.section}`);
-  if (
-    !roles.has(req.params.role) ||
-    !sections[req.params.role].has(req.params.section)
-  )
-    return res.redirect(`/dashboard/${req.params.role}`);
-  if (req.params.role === "owner")
-    return res.redirect(`/owner-dashboard.html#${req.params.section}`);
-  return res.redirect(`/staff-dashboard.html#${req.params.section}`);
-});
-router.get("/dashboard/:role", requireAuth, (req, res) => {
-  if (!roles.has(req.params.role))
+  const role = req.params.role;
+  if (!roles.has(role) || !sections[role]?.has(req.params.section)) {
     return res.redirect(`/dashboard/${req.user.role}`);
-  if (req.params.role === "customer")
-    return res.sendFile(path.resolve(frontendPages, "customer-dashboard.html"));
-  if (req.params.role === "owner")
-    return res.sendFile(path.resolve(frontendPages, "owner-dashboard.html"));
-  if (req.params.role === "staff")
-    return res.sendFile(path.resolve(frontendPages, "staff-dashboard.html"));
-  return sendPage("dashboard.html")(req, res);
+  }
+  if (req.user.role !== role) return res.redirect(`/dashboard/${req.user.role}`);
+  return res.sendFile(path.resolve(frontendPages, `${role}-dashboard.html`));
 });
+
+router.get("/dashboard/:role", requireAuth, (req, res) => {
+  const role = req.params.role;
+  if (!roles.has(role)) return res.redirect(`/dashboard/${req.user.role}`);
+  if (req.user.role !== role) return res.redirect(`/dashboard/${req.user.role}`);
+  return res.sendFile(path.resolve(frontendPages, `${role}-dashboard.html`));
+});
+
 router.get("/404", sendPage("not-found.html", 404));
 
 // Owner-Scoped API Routes

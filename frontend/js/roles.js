@@ -25,8 +25,8 @@
       targetUser: "Households & individuals",
       primaryObjective:
         "Find stations, order water refills, manage subscriptions, track points",
-      defaultLanding: "/customer-dashboard.html",
-      dashboardPath: "/customer-dashboard.html",
+      defaultLanding: "/dashboard/customer",
+      dashboardPath: "/dashboard/customer",
       permissions: [
         "stations.view",
         "refills.order",
@@ -113,8 +113,8 @@
       targetUser: "Water refilling station owners",
       primaryObjective:
         "Run business operations, manage staff, pricing, promotions, and customers",
-      defaultLanding: "/owner-dashboard.html",
-      dashboardPath: "/owner-dashboard.html",
+      defaultLanding: "/dashboard/owner",
+      dashboardPath: "/dashboard/owner",
       permissions: [
         "station.overview",
         "orders.manage",
@@ -202,8 +202,8 @@
       targetUser: "Station operational workers",
       primaryObjective:
         "Process refill orders, handle inventory, attend shifts, address requests",
-      defaultLanding: "/staff-dashboard.html",
-      dashboardPath: "/staff-dashboard.html",
+      defaultLanding: "/dashboard/staff",
+      dashboardPath: "/dashboard/staff",
       permissions: [
         "shifts.view",
         "orders.fulfill",

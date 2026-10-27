@@ -6,7 +6,7 @@
  * frontend/js/location.js and frontend/js/dashboard.js respectively, so this
  * fails if the PHP backend ever changes the station JSON contract.
  */
-const BASE = "http://127.0.0.1:8080";
+const BASE = process.env.BASE_URL || "http://127.0.0.1:3001";
 
 // --- verbatim from frontend/js/location.js -----------------------------------
 function isValidPoint(point) {

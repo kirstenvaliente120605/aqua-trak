@@ -7,7 +7,7 @@
  * users/sessions tables. This hammers the same path and then verifies the server
  * is still healthy.
  */
-const BASE = "http://127.0.0.1:8080";
+const BASE = process.env.BASE_URL || "http://127.0.0.1:3001";
 const WORKERS = 8;
 const ROUNDS = 6;
 
