@@ -11,7 +11,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/logo/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/assets/logo/favicon-16.png">
   <link rel="apple-touch-icon" href="/assets/logo/favicon-180.png">
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/styles.css?v=password-toggle-fix-20261028">
 </head>
 <body data-page="customer-dashboard">
 
@@ -1205,7 +1205,7 @@
           <span>You'll earn +${calc.points} AquaPoints with this refill!</span>
         </div>
 
-        <button class="button wide" type="button" onclick="submitRefillOrder('${station.id}', '${station.name}')">
+        <button class="button wide" type="button" onclick="submitRefillOrder('${station.id}')">
           Confirm & Place Order →
         </button>
         <p style="font-size:11px;color:#78908d;text-align:center;margin:10px 0 0;">
@@ -1250,10 +1250,12 @@
       renderOrderRefills(document.getElementById('main-content'), orderFormState.stationId);
     }
 
-    async function submitRefillOrder(stationId, stationName) {
+    async function submitRefillOrder(stationId) {
       const calc = calculateOrderTotals({ pricePerGallon: orderFormState.containerPrice });
       const isPickup = orderFormState.fulfillment === 'pickup';
       const station = await AquaDashboard.fetchStationById(stationId);
+      // Never interpolate names into inline handlers; resolve them here.
+      const stationName = (station && station.name) || 'Water Refilling Station';
 
       // Client-side guard. placeRefillOrder() re-checks this on the data, but
       // failing here gives the customer an immediate, readable message.
@@ -1383,7 +1385,13 @@
     // 3. ORDER HISTORY & 4-STAGE TRACKING VIEW
     async function renderOrderHistory(container) {
       container.innerHTML = `<div class="empty-state">Loading order history...</div>`;
-      const orders = await AquaDashboard.fetchOrders();
+      let orders;
+      try {
+        orders = await AquaDashboard.fetchOrders();
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>${esc(error.message || 'Could not load your orders.')}</p></div>`;
+        return;
+      }
 
       container.innerHTML = `
         <section class="section-hero">
@@ -1486,10 +1494,14 @@
     }
 
     async function handleAdvanceStatus(orderId) {
-      const updated = await AquaDashboard.advanceOrderStatus(orderId);
-      if (updated) {
-        showToast(`Order #${orderId} status advanced to: ${updated.status.toUpperCase()}`);
-        renderOrderHistory(document.getElementById('main-content'));
+      try {
+        const updated = await AquaDashboard.advanceOrderStatus(orderId);
+        if (updated) {
+          showToast(`Order #${orderId} status advanced to: ${updated.status.toUpperCase()}`);
+          renderOrderHistory(document.getElementById('main-content'));
+        }
+      } catch (error) {
+        showToast(error.message || 'Could not update that order.');
       }
     }
 
@@ -1531,7 +1543,13 @@
     // 4. SUBSCRIPTIONS VIEW
     async function renderSubscriptions(container) {
       container.innerHTML = `<div class="empty-state">Loading subscription plans...</div>`;
-      const subs = await AquaDashboard.fetchSubscriptions();
+      let subs;
+      try {
+        subs = await AquaDashboard.fetchSubscriptions();
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>${esc(error.message || 'Could not load your subscriptions.')}</p></div>`;
+        return;
+      }
 
       container.innerHTML = `
         <section class="section-hero">
@@ -1592,10 +1610,14 @@
     }
 
     async function handleUpdateSub(subId, newStatus) {
-      const res = await AquaDashboard.updateSubscriptionStatus(subId, newStatus);
-      if (res.success) {
-        showToast(`Subscription ${newStatus.toUpperCase()} successfully.`);
-        renderSubscriptions(document.getElementById('main-content'));
+      try {
+        const res = await AquaDashboard.updateSubscriptionStatus(subId, newStatus);
+        if (res.success) {
+          showToast(`Subscription ${newStatus.toUpperCase()} successfully.`);
+          renderSubscriptions(document.getElementById('main-content'));
+        }
+      } catch (error) {
+        showToast(error.message || 'Could not update that subscription.');
       }
     }
 
@@ -1638,26 +1660,36 @@
       const address = document.getElementById('sub-address').value;
       const basePrice = parseFloat(priceStr) * gallons;
 
-      const res = await AquaDashboard.createSubscription({
-        stationId,
-        stationName,
-        frequency,
-        gallonsPerRefill: gallons,
-        basePrice,
-        deliveryAddress: address
-      });
+      try {
+        const res = await AquaDashboard.createSubscription({
+          stationId,
+          stationName,
+          frequency,
+          gallonsPerRefill: gallons,
+          basePrice,
+          deliveryAddress: address
+        });
 
-      if (res.success) {
-        closeModal();
-        showToast('Recurring refill plan created!');
-        renderSubscriptions(document.getElementById('main-content'));
+        if (res.success) {
+          closeModal();
+          showToast('Recurring refill plan created!');
+          renderSubscriptions(document.getElementById('main-content'));
+        }
+      } catch (error) {
+        showToast(error.message || 'Could not create that subscription.');
       }
     }
 
     // 5. LOYALTY & REWARDS VIEW
     async function renderLoyalty(container) {
       container.innerHTML = `<div class="empty-state">Loading loyalty points...</div>`;
-      const loyalty = await AquaDashboard.fetchLoyalty();
+      let loyalty;
+      try {
+        loyalty = await AquaDashboard.fetchLoyalty();
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>${esc(error.message || 'Could not load your rewards.')}</p></div>`;
+        return;
+      }
 
       container.innerHTML = `
         <div class="loyalty-hero-card">
@@ -1714,8 +1746,12 @@
     }
 
     async function handleRedeemReward(rewardId) {
-      const res = await AquaDashboard.redeemLoyaltyReward(rewardId);
-      if (res.success) {
+      try {
+        const res = await AquaDashboard.redeemLoyaltyReward(rewardId);
+        if (!res.success) {
+          showToast(res.error || 'That reward could not be redeemed.');
+          return;
+        }
         openModal(`
           <div style="text-align:center;">
             <span class="confirm-hero-icon confirm-hero-icon-success" aria-hidden="true">
@@ -1729,14 +1765,20 @@
             <button class="button wide" onclick="closeModal(); switchSection('loyalty');">Done</button>
           </div>
         `);
-      } else {
-        showToast(res.error);
+      } catch (error) {
+        showToast(error.message || 'That reward could not be redeemed.');
       }
     }
 
     // 6. NOTIFICATIONS VIEW
     async function renderNotifications(container) {
-      const notifs = await AquaDashboard.fetchNotifications();
+      let notifs;
+      try {
+        notifs = await AquaDashboard.fetchNotifications();
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>${esc(error.message || 'Could not load notifications.')}</p></div>`;
+        return;
+      }
       container.innerHTML = `
         <section class="section-hero">
           <span class="eyebrow">Activity & Alerts</span>
@@ -1767,25 +1809,21 @@
     }
 
     async function handleMarkAllRead() {
-      await AquaDashboard.markAllNotificationsRead();
-      document.getElementById('notif-badge').style.display = 'none';
-      showToast('All notifications marked as read.');
-      renderNotifications(document.getElementById('main-content'));
+      try {
+        await AquaDashboard.markAllNotificationsRead();
+        document.getElementById('notif-badge').style.display = 'none';
+        showToast('All notifications marked as read.');
+        renderNotifications(document.getElementById('main-content'));
+      } catch (error) {
+        showToast(error.message || 'Could not mark notifications as read.');
+      }
     }
 
     // 7. PROFILE & ACCOUNT SETTINGS
     async function renderProfile(container) {
       const user = await AquaAuth.getCurrentUser();
       if (!user) throw new Error("Authenticated customer profile is unavailable.");
-      const profileKey = `aquatracker_profile_customer_${user.email}`;
-      let savedProfile = {};
-      try {
-        savedProfile = JSON.parse(localStorage.getItem(profileKey) || "{}");
-      } catch (error) {
-        console.error("Invalid saved customer profile:", error);
-        localStorage.removeItem(profileKey);
-      }
-      const profile = { ...user, ...savedProfile };
+      const profile = { ...user };
       const demoAddresses = AquaRoles.DEMO_ACCOUNTS.customer.savedAddresses || [];
       const addresses = user.savedAddresses?.length
         ? user.savedAddresses
@@ -1830,7 +1868,7 @@
                   </div>
                 `).join('')}
               </div>
-              <button class="button small outline" onclick="showToast('Add new address is available in full release.')">+ Add New Delivery Address</button>
+              <button class="button small outline" onclick="handleAddAddress()">+ Add New Delivery Address</button>
             </div>
           </div>
 
@@ -1839,10 +1877,14 @@
             <div class="form-step-card">
               <h3 style="margin:0 0 16px;color:var(--navy);">Security Settings</h3>
               <div style="margin-bottom:12px;">
-                <label>Update Password</label>
-                <input type="password" placeholder="New password...">
+                <label>Current Password</label>
+                <input type="password" id="pwd-current" placeholder="Current password..." autocomplete="current-password">
               </div>
-              <button class="button small outline" onclick="showToast('Password updated (simulation).')">Update Password</button>
+              <div style="margin-bottom:12px;">
+                <label>New Password</label>
+                <input type="password" id="pwd-new" placeholder="At least 8 characters..." autocomplete="new-password">
+              </div>
+              <button class="button small outline" onclick="handleUpdatePassword()">Update Password</button>
             </div>
           </div>
         </div>
@@ -1862,11 +1904,56 @@
         showToast('Name and email are required.');
         return;
       }
-      localStorage.setItem(
-        `aquatracker_profile_customer_${user.email}`,
-        JSON.stringify(profile)
-      );
-      showToast('Prototype profile saved on this device.');
+
+      try {
+        const updated = await AquaDashboard.updateProfile(profile);
+        AquaAuth.setCurrentUser({ ...user, ...updated });
+        showToast('Profile saved.');
+        renderProfile(document.getElementById('main-content'));
+      } catch (error) {
+        showToast(error.message || 'Could not save your profile.');
+      }
+    }
+
+    async function handleUpdatePassword() {
+      const current = document.getElementById('pwd-current').value;
+      const next = document.getElementById('pwd-new').value;
+
+      if (!current || !next) {
+        showToast('Enter your current and new password.');
+        return;
+      }
+
+      try {
+        await AquaDashboard.changePassword(current, next);
+        document.getElementById('pwd-current').value = '';
+        document.getElementById('pwd-new').value = '';
+        showToast('Password updated.');
+      } catch (error) {
+        showToast(error.message || 'Could not update your password.');
+      }
+    }
+
+    async function handleAddAddress() {
+      const address = (prompt('Street address, barangay, city:') || '').trim();
+      if (!address) return;
+
+      try {
+        await AquaDashboard.updateAddress(address);
+        const user = await AquaAuth.getCurrentUser();
+        const existing = Array.isArray(user.savedAddresses) && user.savedAddresses.length
+          ? user.savedAddresses
+          : (AquaRoles.DEMO_ACCOUNTS.customer.savedAddresses || []);
+        const savedAddresses = [
+          { label: 'New Address', address, isDefault: true },
+          ...existing.map((entry) => ({ ...entry, isDefault: false })),
+        ];
+        AquaAuth.setCurrentUser({ ...user, savedAddresses });
+        showToast('Delivery address saved.');
+        renderProfile(document.getElementById('main-content'));
+      } catch (error) {
+        showToast(error.message || 'Could not save that address.');
+      }
     }
 
     function protectRender(name, render) {
@@ -1916,5 +2003,6 @@
     renderNotifications = protectRender('notifications', renderNotifications);
     renderProfile = protectRender('profile', renderProfile);
   </script>
+  <script src="/js/global-password-toggle.js?v=password-toggle-fix-20261028" defer></script>
 </body>
 </html>

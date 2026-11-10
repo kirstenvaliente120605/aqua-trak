@@ -16,7 +16,7 @@ INSERT IGNORE INTO `station_owners` (`id`, `user_id`, `business_name`) SELECT UU
 INSERT IGNORE INTO `customers` (`id`, `user_id`, `default_address`, `aqua_points`) SELECT UUID(), id, 'Block 4, Lot 12, Sunrise Village, Brgy. San Jose', 240 FROM users WHERE email = 'customer.demo@aquatracker.ph';
 
 -- Station
-INSERT IGNORE INTO `stations` (`id`, `owner_id`, `name`, `address`, `lat`, `lng`, `operating_hours`, `status`) SELECT UUID(), so.id, 'DRINK n\' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City', 7.8269, 123.4371, '{"Mon":"7:30-16:30","Sat":"7:30-16:30"}', 'open' FROM station_owners so JOIN users u ON so.user_id = u.id WHERE u.email = 'owner.demo@aquatracker.ph';
+INSERT IGNORE INTO `stations` (`id`, `owner_id`, `name`, `address`, `lat`, `lng`, `operating_hours`, `status`) SELECT UUID(), so.id, 'DRINK n\' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City', 7.827330, 123.444185, '{"Mon":"7:30-16:30","Sat":"7:30-16:30"}', 'open' FROM station_owners so JOIN users u ON so.user_id = u.id WHERE u.email = 'owner.demo@aquatracker.ph';
 
 -- Notification
 INSERT IGNORE INTO `notifications` (`id`, `user_id`, `title`, `body`, `is_read`) SELECT UUID(), id, 'Welcome', 'Your AquaTracker account is ready.', 0 FROM users WHERE email = 'customer.demo@aquatracker.ph';

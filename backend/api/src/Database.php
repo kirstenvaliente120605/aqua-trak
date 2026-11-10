@@ -126,6 +126,32 @@ final class Database
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
+    /** Atomically allocates the next readable account or owner id. */
+    public static function nextReadableId(string $kind): string
+    {
+        $prefix = match ($kind) {
+            'users' => 'USR',
+            'owners' => 'OWN',
+            'stations' => 'STN',
+            default => throw new RuntimeException('Unknown ID sequence: ' . $kind),
+        };
+
+        $advanced = self::run(
+            'UPDATE id_sequence SET value = LAST_INSERT_ID(value + 1) WHERE name = ?',
+            [$kind]
+        )->rowCount();
+
+        if ($advanced === 0) {
+            self::run('INSERT IGNORE INTO id_sequence (name, value) VALUES (?, 0)', [$kind]);
+            self::run(
+                'UPDATE id_sequence SET value = LAST_INSERT_ID(value + 1) WHERE name = ?',
+                [$kind]
+            );
+        }
+
+        return $prefix . '_' . str_pad((string) self::scalar('SELECT LAST_INSERT_ID()'), 3, '0', STR_PAD_LEFT);
+    }
+
     /** Drops the cached handle so the installer can switch databases. */
     public static function reset(): void
     {

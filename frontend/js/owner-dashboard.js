@@ -27,11 +27,22 @@
   function statusClass(status) {
     const normalized = String(status || "").toLowerCase();
     if (normalized.includes("reject") || normalized.includes("cancel") || normalized.includes("expired")) return "slate";
-    if (normalized.includes("out for delivery")) return "out-for-delivery";
+    if (normalized.includes("out for delivery") || normalized.includes("out-for-delivery")) return "out-for-delivery";
     if (normalized.includes("deliver") || normalized.includes("complete") || normalized === "active" || normalized === "approved") return "completed";
     if (normalized.includes("prepar") || normalized.includes("progress") || normalized.includes("ready") || normalized.includes("scheduled")) return "out-for-delivery";
     if (normalized.includes("pending") || normalized.includes("new")) return "pending";
     return "blue";
+  }
+
+  function statusText(status) {
+    const labels = {
+      "new": "New", "new order": "New", "pending": "Pending", "confirmed": "Confirmed",
+      "preparing": "Preparing", "ready": "Ready for pickup", "ready_for_pickup": "Ready for pickup",
+      "out for delivery": "Out for delivery", "out-for-delivery": "Out for delivery",
+      "delivered": "Completed", "complete": "Completed", "completed": "Completed", "cancelled": "Cancelled",
+    };
+    const key = String(status || "").toLowerCase();
+    return labels[key] || String(status || "New");
   }
 
   function formatDate(value) {
@@ -100,7 +111,7 @@
   }
 
   function isWaitingOrder(order) {
-    return ["new", "new order", "preparing"].includes(String(order.status || "").toLowerCase());
+    return ["new", "new order", "pending", "confirmed", "preparing", "ready_for_pickup", "out-for-delivery"].includes(String(order.status || "").toLowerCase());
   }
 
   function metricComparison(current, previous, hasPrevious, label) {
@@ -307,10 +318,10 @@
     try {
       const orders = getPeriodOrders(await global.AquaOwner.fetchOrders());
       const groups = [
-        ["New", order => ["new", "new order"].includes(String(order.status || "").toLowerCase()), "status-new"],
-        ["Preparing", order => String(order.status || "").toLowerCase().includes("prepar"), "status-preparing"],
+        ["New", order => ["new", "new order", "pending"].includes(String(order.status || "").toLowerCase()), "status-new"],
+        ["Preparing", order => ["preparing", "confirmed"].includes(String(order.status || "").toLowerCase()), "status-preparing"],
         ["Ready for pickup", order => String(order.status || "").toLowerCase().includes("ready"), "status-ready"],
-        ["Out for delivery", order => String(order.status || "").toLowerCase().includes("out for delivery"), "status-delivery"],
+        ["Out for delivery", order => String(order.status || "").toLowerCase().includes("out for delivery") || String(order.status || "").toLowerCase().includes("out-for-delivery"), "status-delivery"],
         ["Delivered", order => ["delivered", "complete", "completed"].includes(String(order.status || "").toLowerCase()), "status-delivered"],
         ["Cancelled", order => String(order.status || "").toLowerCase().includes("cancel"), "status-cancelled"],
       ];
@@ -354,13 +365,15 @@
         ${orders.length ? `<div class="activity-list">${orders.map(order => {
           const normalized = String(order.status || "").toLowerCase();
           const fulfillment = getFulfillment(order);
-          const nextStatus = ["new", "new order"].includes(normalized) ? "Preparing"
-            : normalized === "preparing" ? (fulfillment === "delivery" ? "Out for delivery" : "Ready for Pickup")
-              : null;
+          const nextStatus = ["new", "new order", "pending"].includes(normalized) ? "Preparing"
+            : ["preparing", "confirmed"].includes(normalized) ? (fulfillment === "delivery" ? "Out for delivery" : "Ready for Pickup")
+              : normalized === "out-for-delivery" ? "Completed"
+                : normalized === "ready_for_pickup" ? "Completed"
+                  : null;
           return `<article class="activity-row">
             <span class="activity-icon">${fulfillment === "pickup" ? "⌂" : "↗"}</span>
             <div class="activity-copy"><strong>${escapeHtml(order.customerName || "Customer")} · ${Number(order.gallons || 0)} gal</strong><small>${escapeHtml(order.id)} · ${formatDate(order.createdAt)} · ${fulfillment === "pickup" ? "Pickup" : "Delivery"}</small></div>
-            <div class="activity-meta"><span class="pill ${statusClass(order.status)}">${escapeHtml(order.status || "New")}</span><strong>₱${Number(order.total || 0).toFixed(2)}</strong>${nextStatus ? `<button class="button tiny outline" type="button" data-overview-action="advance" data-order-id="${escapeHtml(order.id)}" data-next-status="${nextStatus}">${nextStatus === "Preparing" ? "Mark preparing" : nextStatus === "Out for delivery" ? "Mark out for delivery" : "Mark ready"}</button>` : ""}</div>
+            <div class="activity-meta"><span class="pill ${statusClass(order.status)}">${escapeHtml(statusText(order.status))}</span><strong>₱${Number(order.total || 0).toFixed(2)}</strong>${nextStatus ? `<button class="button tiny outline" type="button" data-overview-action="advance" data-order-id="${escapeHtml(order.id)}" data-next-status="${nextStatus}">${nextStatus === "Preparing" ? "Mark preparing" : nextStatus === "Out for delivery" ? "Mark out for delivery" : nextStatus === "Completed" ? "Complete order" : "Mark ready"}</button>` : ""}</div>
           </article>`;
         }).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">▤</span><strong>No order activity yet</strong><p>New station orders will appear here.</p></div>`}
       </section>`;
@@ -554,7 +567,7 @@
                     <td><span class="dashboard-customer-cell"><span class="dashboard-avatar small">${getInitials(o.customerName)}</span>${o.customerName || 'Customer'}</span></td>
                     <td>${formatDate(o.createdAt)}</td>
                     <td><strong>₱${Number(o.total || 0).toFixed(2)}</strong></td>
-                    <td><span class="pill ${statusClass(o.status)}">${o.status}</span></td>
+                    <td><span class="pill ${statusClass(o.status)}">${statusText(o.status)}</span></td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -628,8 +641,8 @@
         "Mineral Water": {
           caption: "Same water, different container styles — choose which style(s) your station offers.",
           products: {
-            "5-gallon-slim": { label: "5-Gallon Slim", detail: "Lightweight slim container", icon: "◉" },
-            "5-gallon-round": { label: "5-Gallon Round", detail: "Classic family-size refill", icon: "◉" },
+            "5-gal-slim": { label: "5-Gallon Slim", detail: "Lightweight slim container", icon: "◉" },
+            "5-gal-round": { label: "5-Gallon Round", detail: "Classic family-size refill", icon: "◉" },
           }
         }
       };
@@ -696,10 +709,14 @@
   }
 
   async function savePrice(product) {
-    const newPrice = document.getElementById(`price-${product}`).value;
+    const newPrice = Number(document.getElementById(`price-${product}`).value);
+    if (!Number.isFinite(newPrice) || newPrice < 0) {
+      showToast("Enter a valid price of zero or more.");
+      return;
+    }
     try {
       const currentPricing = await global.AquaOwner.fetchPricing();
-      currentPricing[product] = parseFloat(newPrice);
+      currentPricing[product] = newPrice;
       await global.AquaOwner.updatePricing(currentPricing);
       showToast(`Updated ${product} price to ₱${newPrice}.`);
     } catch (err) {
@@ -711,6 +728,7 @@
   async function renderSettings(container) {
     try {
       const settings = await global.AquaOwner.fetchSettings();
+      const stations = await global.AquaOwner.fetchStations();
       container.innerHTML = `
         ${sectionHero(`Station profile · ${currentUser.station}`, "A welcoming local refill hub.", "Keep your station's public details accurate so nearby customers know where to find you.")}
         <section class="glass-panel dashboard-form-panel">
@@ -727,15 +745,52 @@
               <label for="set-contact">Contact number</label><input type="text" id="set-contact" value="${settings.contact}">
             </fieldset>
           </div>
-          <div class="dashboard-form-footer"><p>Changes update your station profile on this device.</p><button class="button amber" data-save-settings>Save station details</button></div>
+          <div class="dashboard-form-footer"><p>Changes update your public station listing.</p><button class="button amber" data-save-settings>Save station details</button></div>
+        </section>
+        <section class="glass-panel dashboard-form-panel">
+          <div class="dashboard-panel-heading"><div><span class="eyebrow">One owner, multiple stations</span><h3>Your stations</h3></div><span class="pill completed">${stations.length} listed</span></div>
+          <div class="dashboard-card-grid">${stations.map(station => `
+            <article class="glass-card dashboard-subscription-card"><span class="eyebrow">${escapeHtml(station.id)}</span><h3>${escapeHtml(station.name)}</h3><p>${escapeHtml(station.address || 'Address not set')}</p></article>
+          `).join('')}</div>
+          <div class="dashboard-form-grid">
+            <label for="new-station-name">New station name<input id="new-station-name" maxlength="190" required></label>
+            <label for="new-station-address">Address<input id="new-station-address" maxlength="255"></label>
+            <label for="new-station-lat">Latitude (decimal degrees)<input id="new-station-lat" type="number" min="-90" max="90" step="any" required></label>
+            <label for="new-station-lng">Longitude (decimal degrees)<input id="new-station-lng" type="number" min="-180" max="180" step="any" required></label>
+            <label for="new-station-hours">Operating hours<input id="new-station-hours"></label>
+            <label for="new-station-contact">Contact number<input id="new-station-contact"></label>
+          </div>
+          <div class="dashboard-form-footer"><p>Each station belongs to this owner only.</p><button class="button amber" type="button" data-add-station>Add station</button></div>
         </section>
       `;
       container.onclick = async event => {
         if (event.target.closest("[data-save-settings]")) await saveSettings();
+        if (event.target.closest("[data-add-station]")) await addStation();
       };
     } catch (err) {
       console.error("Error rendering settings:", err);
       container.innerHTML = `<div class="empty-state">Couldn't load data — see console</div>`;
+    }
+  }
+
+  async function addStation() {
+    const name = document.getElementById('new-station-name').value.trim();
+    const address = document.getElementById('new-station-address').value.trim();
+    const lat = document.getElementById('new-station-lat').valueAsNumber;
+    const lng = document.getElementById('new-station-lng').valueAsNumber;
+    const hours = document.getElementById('new-station-hours').value.trim();
+    const contact = document.getElementById('new-station-contact').value.trim();
+    if (!name) return showToast('Enter a station name.');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return showToast('Enter both latitude and longitude.');
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180 || lat === 0 || lng === 0) {
+      return showToast('Enter valid non-zero coordinates within latitude -90..90 and longitude -180..180.');
+    }
+    try {
+      const station = await global.AquaOwner.addStation({ name, address, lat, lng, hours, contact });
+      showToast(`${station.name} added (${station.id}).`);
+      await renderSettings(document.getElementById('main-content'));
+    } catch (error) {
+      showToast(error.message || 'Could not add the station.');
     }
   }
 
@@ -791,35 +846,90 @@
   async function renderPromotions(container) {
     try {
       const promotions = await global.AquaOwner.fetchPromotions();
+      const today = new Date().toISOString().slice(0, 10);
       container.innerHTML = `
         ${sectionHero(`Station marketing · ${currentUser.station}`, "Give neighbors a reason to come back.", "Highlight the offers that make every refill a little more rewarding.")}
-        <div class="dashboard-promo-toolbar"><div><span class="eyebrow">Offers & rewards</span><h3>Your promotions</h3><p>Track offer status and customer redemptions.</p></div><button type="button" class="button amber" disabled title="Promotion creation is not enabled yet">＋ Create promotion</button></div>
+        <div class="dashboard-promo-toolbar"><div><span class="eyebrow">Offers & rewards</span><h3>Your promotions</h3><p>Track offer status and customer redemptions.</p></div><button type="button" class="button amber" data-new-promotion>+ Create promotion</button></div>
+        <section class="glass-panel dashboard-panel" id="promotion-create-panel" hidden style="margin-bottom:18px;">
+          <div class="dashboard-panel-heading"><div><span class="eyebrow">New offer</span><h3>Create a station promotion</h3></div><button type="button" class="button small outline" data-cancel-promotion>Cancel</button></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;">
+            <fieldset class="dashboard-form-section"><legend><span>01</span>Offer code</legend><input id="promo-code" maxlength="30" placeholder="SUMMER10" autocomplete="off"></fieldset>
+            <fieldset class="dashboard-form-section"><legend><span>02</span>Discount type</legend><select id="promo-type" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--navy);font:inherit;"><option value="percent">Percent off</option><option value="fixed">Fixed amount off</option><option value="delivery">Free delivery</option></select></fieldset>
+            <fieldset class="dashboard-form-section"><legend><span>03</span>Value</legend><input id="promo-value" type="number" min="0" step="0.01" placeholder="10"></fieldset>
+            <fieldset class="dashboard-form-section"><legend><span>04</span>Expiry date</legend><input id="promo-expiry" type="date" min="${today}"></fieldset>
+          </div>
+          <div class="dashboard-form-footer"><p>Active offers are visible to customers using this station.</p><button type="button" class="button amber" data-save-promotion>Create promotion</button></div>
+        </section>
         ${promotions.length ? `<div class="dashboard-card-grid">${promotions.map(promotion => `
           <article class="glass-card dashboard-promotion-card">
-            <div class="dashboard-promotion-banner"><span class="dashboard-promotion-mark">✦</span><span class="pill ${statusClass(promotion.status)}">${promotion.status}</span></div>
+            <div class="dashboard-promotion-banner"><span class="dashboard-promotion-mark">?</span><span class="pill ${statusClass(promotion.status)}">${promotion.status}</span></div>
             <span class="eyebrow">Station offer</span><h3>${promotion.name}</h3><p>${promotion.detail}</p>
             <div class="dashboard-promo-code"><span>Offer code</span><strong>${promotion.code || "No code assigned"}</strong></div>
             <div class="dashboard-detail-row"><span>Redemptions</span><strong>${Number(promotion.redemptions || 0)}</strong></div>
             <div class="dashboard-detail-row"><span>Offer period</span><strong>${promotion.expiry ? `Until ${formatDate(promotion.expiry)}` : "No expiry date set"}</strong></div>
           </article>
-        `).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">✦</span><strong>No promotions configured</strong><p>When your station launches an offer, it will appear here.</p></div>`}`;
+        `).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">?</span><strong>No promotions configured</strong><p>When your station launches an offer, it will appear here.</p></div>`}`;
+      container.onclick = async event => {
+        if (event.target.closest("[data-new-promotion]")) {
+          const panel = container.querySelector("#promotion-create-panel");
+          if (panel) {
+            panel.hidden = false;
+            container.querySelector("#promo-code")?.focus();
+          }
+          return;
+        }
+        if (event.target.closest("[data-cancel-promotion]")) {
+          const panel = container.querySelector("#promotion-create-panel");
+          if (panel) panel.hidden = true;
+          return;
+        }
+        if (event.target.closest("[data-save-promotion]")) {
+          await savePromotion();
+        }
+      };
+      container.onchange = event => {
+        if (event.target.id === "promo-type") {
+          const valueInput = container.querySelector("#promo-value");
+          if (valueInput) {
+            valueInput.disabled = event.target.value === "delivery";
+            valueInput.placeholder = event.target.value === "delivery" ? "Not required" : "10";
+            if (event.target.value === "delivery") valueInput.value = "";
+          }
+        }
+      };
     } catch (err) {
       console.error("Error rendering promotions:", err);
       container.innerHTML = `<div class="empty-state">Couldn't load data — see console</div>`;
     }
   }
 
+  async function savePromotion() {
+    const code = document.getElementById("promo-code").value.trim().toUpperCase();
+    const type = document.getElementById("promo-type").value;
+    const value = Number(document.getElementById("promo-value").value || 0);
+    const expiresAt = document.getElementById("promo-expiry").value;
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) {
+      return showToast("Use 3-30 letters, numbers, hyphens or underscores for the offer code.");
+    }
+    if (type !== "delivery" && (!Number.isFinite(value) || value <= 0)) {
+      return showToast("Enter a discount value greater than zero.");
+    }
+    if (type === "percent" && value > 100) {
+      return showToast("Percentage discounts cannot exceed 100.");
+    }
+    try {
+      await global.AquaOwner.createPromotion({ code, type, value, expiresAt });
+      showToast(`Promotion ${code} created.`);
+      await renderPromotions(document.getElementById("main-content"));
+    } catch (err) {
+      console.error("Error creating promotion:", err);
+      showToast(err.message || "Failed to create the promotion.");
+    }
+  }
+
   async function renderProfile(container) {
     try {
-      const profileKey = `aquatracker_profile_owner_${currentUser.email}`;
-      let saved = {};
-      try {
-        saved = JSON.parse(localStorage.getItem(profileKey) || "{}");
-      } catch (err) {
-        console.error("Invalid saved owner profile:", err);
-        localStorage.removeItem(profileKey);
-      }
-      const owner = { ...currentUser, ...saved };
+      const owner = { ...currentUser };
       const memberSince = owner.createdAt ? formatDate(owner.createdAt) : "Station owner";
       const initials = getInitials(owner.name);
       container.innerHTML = `
@@ -843,7 +953,7 @@
               <label>Email address<input value="${owner.email}" readonly></label>
               <label>Role<input value="Station owner" readonly></label>
             </div>
-            <div class="dashboard-form-footer"><p>Changes to your profile are saved on this device.</p><button class="button amber" onclick="saveOwnerProfile()">Save profile</button></div>
+            <div class="dashboard-form-footer"><p>Changes update your AquaTracker account.</p><button class="button amber" onclick="saveOwnerProfile()">Save profile</button></div>
           </section>
         </div>`;
     } catch (err) {
@@ -852,18 +962,31 @@
     }
   }
 
-  function saveOwnerProfile() {
-    const profileKey = `aquatracker_profile_owner_${currentUser.email}`;
-    const profile = {
-      name: document.getElementById('owner-profile-name').value.trim(),
-      phone: document.getElementById('owner-profile-phone').value.trim(),
-    };
-    if (!profile.name) {
+  async function saveOwnerProfile() {
+    const name = document.getElementById('owner-profile-name').value.trim();
+    const phone = document.getElementById('owner-profile-phone').value.trim();
+    if (!name) {
       showToast("Name is required.");
       return;
     }
-    localStorage.setItem(profileKey, JSON.stringify(profile));
-    showToast("Prototype profile saved on this device.");
+
+    try {
+      const updated = await global.AquaDashboard.updateProfile({
+        name,
+        phone,
+        email: currentUser.email,
+        location: currentUser.location || "",
+      });
+      if (updated) {
+        currentUser = updated;
+        global.AquaAuth.setCurrentUser(currentUser);
+      }
+      showToast("Profile updated successfully.");
+      await renderProfile(document.getElementById('main-content'));
+    } catch (err) {
+      console.error("Error saving owner profile:", err);
+      showToast(err.message || "Failed to save profile.");
+    }
   }
 
   async function saveSettings() {
@@ -874,7 +997,11 @@
       contact: document.getElementById('set-contact').value,
     };
     try {
-      await global.AquaOwner.updateSettings(settings);
+      const updated = await global.AquaOwner.updateSettings(settings);
+      if (updated) {
+        currentUser.station = updated.name || currentUser.station;
+        global.AquaAuth.setCurrentUser(currentUser);
+      }
       showToast("Station profile updated successfully.");
     } catch (err) {
       console.error("Error saving settings:", err);

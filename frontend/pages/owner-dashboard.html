@@ -52,6 +52,7 @@
         </div>
 
         <div class="top-actions">
+          <select id="owner-station-select" aria-label="Select station" hidden></select>
           <div class="top-account">
             <strong id="top-name">Joan Dela Cruz</strong>
             <small id="top-subtitle">ClearSpring Water Hub</small>
@@ -73,6 +74,8 @@
     </div>
   </div>
 
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
   <script src="/js/roles.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/common.js"></script>
@@ -88,6 +91,11 @@
       AquaCommon.initStore();
       AquaDashboard.initDataStores();
       setUser(user);
+      await AquaOwner.initializeStations();
+      document.getElementById('owner-station-select')?.addEventListener('change', async event => {
+        AquaOwner.selectStation(event.target.value);
+        await switchSection(window.location.hash.slice(1) || 'overview');
+      });
       // 2. Hydrate user info & dynamic nav
       hydrateUserDisplay(user);
       renderNavigation(user);

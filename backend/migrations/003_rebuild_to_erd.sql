@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS `user` (
 CREATE TABLE IF NOT EXISTS `station_owner` (
   `id`            CHAR(36)     NOT NULL DEFAULT (UUID()),
   `user_id`       CHAR(36)     NOT NULL,
-  `business_name` VARCHAR(190) NOT NULL,
+  `owner_name`    VARCHAR(190) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_station_owner_user` (`user_id`),
   KEY `ix_station_owner_user` (`user_id`),
@@ -44,6 +44,14 @@ CREATE TABLE IF NOT EXISTS `station_owner` (
     FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Atomic counters used by the PHP API for readable user and owner IDs.
+CREATE TABLE IF NOT EXISTS `id_sequence` (
+  `name`  VARCHAR(32)     NOT NULL,
+  `value` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO `id_sequence` (`name`, `value`) VALUES ('users', 0), ('owners', 0), ('stations', 0);
 
 -- ---------------------------------------------------------------------------
 -- 3. NOTIFICATION (1:N from user)
@@ -302,13 +310,13 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- Seed default station catalogue (same as 001+original)
 -- =============================================================================
 INSERT IGNORE INTO `station` (`id`, `name`, `address`, `phone`, `hours`, `rating`, `price_per_gallon`, `delivery`, `lat`, `lng`) VALUES
-  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 7.8269000, 123.4371000),
+  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 7.8273300, 123.4441850),
   ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit',                            'Purok Bakhaw A, Brgy. Kawit, Pagadian City',          'Mon-Sun 8:00 AM-6:00 PM',   4.7, 30, 0, 7.8312000, 123.4437000),
   ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit',                              'Purok Pagang, Brgy. Kawit, Pagadian City',             'Mon-Sat 7:00 AM-6:30 PM',   4.8, 35, 1, 7.8347000, 123.4481000),
   ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok',                        'Purok Makugihon, Brgy. Bulatok, Pagadian City',        'Mon-Sat 8:00 AM-5:00 PM',   4.6, 30, 0, 7.8198000, 123.4297000),
   ('aquater',       'Aqua''Ter SMN Water Refilling Station',            'Beside DXPR, San Jose District',                         'Beside DXPR Radio, San Jose District, Pagadian City',  'Mon-Sun 6:30 AM-7:00 PM',   4.9, 25, 1, 7.8191000, 123.4412000),
   ('ph2o',          'PH2O Water Refilling Station',                      'Warlito Pulmones St, Santiago District',                 'Warlito Pulmones St, Santiago District, Pagadian City','0985 337 4448', '24/7 Automated Vendo & Counter', 4.8, 30, 0, 7.8362000, 123.4264000),
-  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',              '',                            0.0, 35, 1, NULL,      NULL)
+  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',              '',                            0.0, 35, 1, 7.8405800, 123.4633600)
 ON DUPLICATE KEY UPDATE
   `name`             = VALUES(`name`),
   `address`          = VALUES(`address`),
@@ -321,8 +329,10 @@ ON DUPLICATE KEY UPDATE
   `lng`              = VALUES(`lng`);
 
 INSERT IGNORE INTO `user` (`id`, `email`, `password_hash`, `role`, `full_name`, `phone`, `remember_me`) VALUES
-  (UUID(), 'customer.demo@example.com', '', 'customer', 'Customer Demo', NULL, 0),
-  (UUID(), 'owner.demo@example.com', '', 'owner', 'Owner Demo', NULL, 0);
+  ('USR_001', 'customer.demo@example.com', '', 'customer', 'Customer Demo', NULL, 0),
+  ('USR_002', 'owner.demo@example.com', '', 'owner', 'Owner Demo', NULL, 0);
+
+UPDATE `id_sequence` SET `value` = GREATEST(`value`, 2) WHERE `name` = 'users';
 
 -- =============================================================================
 -- End of script

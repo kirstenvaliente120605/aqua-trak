@@ -34,20 +34,17 @@ final class Request
     }
 
     /**
-     * Apache runs this file as /api/index.php, so REQUEST_URI still carries the
-     * /api prefix. Strip the script's own directory to get the route the
-     * frontend actually asked for (e.g. "/orders" for /api/orders).
+     * Routes are registered with their public form (`/api/orders`,
+     * `/dashboard/customer`, `/auth/customer/login`). Both Apache's
+     * FallbackResource and the PHP built-in router keep REQUEST_URI intact, so
+     * the path is used as-is. Stripping SCRIPT_NAME's directory would remove the
+     * `/api` prefix and make every API route miss.
      */
     private static function resolvePath(): string
     {
-        $uri  = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-        $base = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/api/index.php')), '/');
+        $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+        $uri = '/' . ltrim(str_replace('\\', '/', $uri), '/');
 
-        if ($base !== '' && $base !== '/' && str_starts_with($uri, $base)) {
-            $uri = substr($uri, strlen($base));
-        }
-
-        $uri = '/' . ltrim($uri, '/');
         // Collapse a trailing slash so /api/orders/ matches /api/orders.
         return $uri === '/' ? '/' : rtrim($uri, '/');
     }
@@ -59,6 +56,12 @@ final class Request
         if ($raw === false || $raw === '') {
             // Native HTML form posts arrive as $_POST.
             return $_POST;
+        }
+
+        // Some Windows tools prepend a UTF-8 BOM to JSON request files.
+        // Browsers do not, but stripping it keeps those clients interoperable.
+        if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+            $raw = substr($raw, 3);
         }
 
         $type = $_SERVER['CONTENT_TYPE'] ?? '';

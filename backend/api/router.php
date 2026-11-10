@@ -1,10 +1,25 @@
+
 <?php
-// PHP built-in server router (php -S) — forwards non-file requests to index.php
+// PHP built-in server router
+
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-$path = __DIR__ . $uri;
-if (is_file($path)) {
-    return false; // serve file directly (css/js/images)
+$uri = rawurldecode($uri);
+
+// Serve existing frontend files directly.
+$file = __DIR__ . '/frontend' . $uri;
+
+if ($uri !== '/' && is_file($file)) {
+    return false;
 }
-$_SERVER['SCRIPT_NAME'] = '/index.php';
-$_SERVER['PHP_SELF'] = '/index.php';
-require __DIR__ . '/index.php';
+
+// Serve the homepage.
+if ($uri === '/') {
+    readfile(__DIR__ . '/frontend/index.html');
+    exit;
+}
+
+// Forward other requests to the backend API.
+$_SERVER['SCRIPT_NAME'] = '/backend/api/index.php';
+$_SERVER['PHP_SELF'] = '/backend/api/index.php';
+
+require __DIR__ . '/backend/api/index.php';

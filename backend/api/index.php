@@ -12,12 +12,14 @@ declare(strict_types=1);
 namespace AquaTracker;
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/src/Database.php';
 require_once __DIR__ . '/src/Http.php';
 require_once __DIR__ . '/src/Router.php';
 require_once __DIR__ . '/src/Auth.php';
 require_once __DIR__ . '/src/Controllers/AuthController.php';
 require_once __DIR__ . '/src/Controllers/CommerceController.php';
+require_once __DIR__ . '/src/Controllers/ErdController.php';
 require_once __DIR__ . '/src/Controllers/StaffController.php';
 require_once __DIR__ . '/src/Controllers/OwnerController.php';
 require_once __DIR__ . '/src/Controllers/PageController.php';
@@ -40,6 +42,9 @@ $router->post('/auth/login', [AuthController::class, 'loginJson']);
 $router->get('/auth/:role/:mode',  [AuthController::class, 'formPage']);
 $router->post('/auth/:role/:mode', [AuthController::class, 'submitForm']);
 $router->get('/api/auth/me', [AuthController::class, 'me']);
+$router->patch('/api/profile', [AuthController::class, 'updateProfile'], [[Auth::class, 'requireAuth']]);
+$router->post('/api/profile/password', [AuthController::class, 'changePassword'], [[Auth::class, 'requireAuth']]);
+$router->patch('/api/profile/address', [ErdController::class, 'updateAddress'], [Auth::requireRole('customer')]);
 
 // ---------------------------------------------------------------------------
 // Customer: stations, orders, subscriptions
@@ -47,19 +52,23 @@ $router->get('/api/auth/me', [AuthController::class, 'me']);
 /** Middleware factory: restricts a route to one role. */
 $requireRole = static fn (string $role): callable => Auth::requireRole($role);
 
-$router->get('/api/stations', [CommerceController::class, 'stations'], [$requireRole('customer')]);
+$router->get('/api/stations', [ErdController::class, 'stations'], [$requireRole('customer')]);
 
-$router->get('/api/orders',  [CommerceController::class, 'listOrders'],  [$requireRole('customer')]);
-$router->post('/api/orders', [CommerceController::class, 'createOrder'], [$requireRole('customer')]);
+$router->get('/api/orders',  [ErdController::class, 'listOrders'],  [$requireRole('customer')]);
+$router->post('/api/orders', [ErdController::class, 'createOrder'], [$requireRole('customer')]);
+$router->patch('/api/orders/:id/status', [ErdController::class, 'updateOrderStatus'], [$requireRole('customer')]);
 
-$router->get('/api/subscriptions', [CommerceController::class, 'listSubscriptions'], [$requireRole('customer')]);
-$router->get('/api/loyalty', [CommerceController::class, 'loyalty'], [$requireRole('customer')]);
-$router->post('/api/loyalty', [CommerceController::class, 'addLoyalty'], [$requireRole('customer')]);
-$router->get('/api/saved-stations', [CommerceController::class, 'savedStations'], [$requireRole('customer')]);
-$router->post('/api/saved-stations', [CommerceController::class, 'saveStation'], [$requireRole('customer')]);
+$router->get('/api/subscriptions', [ErdController::class, 'listSubscriptions'], [$requireRole('customer')]);
+$router->post('/api/subscriptions', [ErdController::class, 'createSubscription'], [$requireRole('customer')]);
+$router->post('/api/subscriptions/:id/cancel', [ErdController::class, 'cancelSubscription'], [$requireRole('customer')]);
+$router->patch('/api/subscriptions/:id/status', [ErdController::class, 'updateSubscriptionStatus'], [$requireRole('customer')]);
 
-$router->post('/api/subscriptions', [CommerceController::class, 'createSubscription'], [$requireRole('customer')]);
-$router->post('/api/subscriptions/:id/cancel', [CommerceController::class, 'cancelSubscription'], [$requireRole('customer')]);
+$router->get('/api/loyalty', [ErdController::class, 'loyalty'], [$requireRole('customer')]);
+$router->post('/api/rewards/redeem', [ErdController::class, 'redeemReward'], [$requireRole('customer')]);
+
+$router->get('/api/notifications', [ErdController::class, 'listNotifications'], [$requireRole('customer')]);
+$router->post('/api/notifications', [ErdController::class, 'createNotification'], [$requireRole('customer')]);
+$router->patch('/api/notifications/read-all', [ErdController::class, 'markNotificationsRead'], [$requireRole('customer')]);
 
 // ---------------------------------------------------------------------------
 // Owner: staff approvals and station management
@@ -69,12 +78,20 @@ $router->get('/api/staff-approvals', [AuthController::class, 'listApprovals'], [
 $router->post('/api/staff-approvals/:id', [AuthController::class, 'decideApproval'], [$requireRole('owner')]);
 
 $router->get('/api/owner/overview',  [OwnerController::class, 'overview'],  [$requireRole('owner')]);
+$router->get('/api/owner/stations', [OwnerController::class, 'listStations'], [$requireRole('owner')]);
+$router->post('/api/owner/stations', [OwnerController::class, 'createStation'], [$requireRole('owner')]);
 $router->get('/api/owner/orders',    [OwnerController::class, 'listOrders'], [$requireRole('owner')]);
 $router->get('/api/owner/customers', [OwnerController::class, 'listCustomers'], [$requireRole('owner')]);
 $router->get('/api/owner/pricing',   [OwnerController::class, 'getPricing'],   [$requireRole('owner')]);
 $router->post('/api/owner/pricing',  [OwnerController::class, 'updatePricing'], [$requireRole('owner')]);
 $router->get('/api/owner/settings',  [OwnerController::class, 'getSettings'],  [$requireRole('owner')]);
 $router->post('/api/owner/settings', [OwnerController::class, 'updateSettings'], [$requireRole('owner')]);
+$router->get('/api/owner/inventory', [OwnerController::class, 'getInventory'], [$requireRole('owner')]);
+$router->get('/api/owner/staff',     [OwnerController::class, 'listStaff'],   [$requireRole('owner')]);
+$router->get('/api/owner/subscriptions', [OwnerController::class, 'listSubscriptions'], [$requireRole('owner')]);
+$router->get('/api/owner/promotions', [OwnerController::class, 'listPromotions'], [$requireRole('owner')]);
+$router->post('/api/owner/promotions', [OwnerController::class, 'createPromotion'], [$requireRole('owner')]);
+$router->patch('/api/owner/orders/:id', [OwnerController::class, 'updateOrder'], [$requireRole('owner')]);
 
 // ---------------------------------------------------------------------------
 // Staff workspace

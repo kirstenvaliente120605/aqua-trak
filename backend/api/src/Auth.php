@@ -1,6 +1,6 @@
 <?php
 /**
- * Accounts, password hashing and server-side sessions.
+ * Accounts, password hashing and PHP-managed sessions.
  *
  * The user array returned here is the exact shape the frontend already
  * consumes from GET /api/auth/me (camelCase, no password hash), so switching
@@ -18,6 +18,23 @@ final class Auth
     private static bool $resolved = false;
     private static bool $authSchemaReady = false;
 
+    private static function startSession(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            return;
+        }
+
+        session_name(AQ_SESSION_COOKIE);
+        session_set_cookie_params([
+            'lifetime' => AQ_SESSION_TTL,
+            'path' => '/',
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+        ini_set('session.gc_maxlifetime', (string) AQ_SESSION_TTL);
+        session_start();
+    }
+
     private static function ensureAuthSchema(): void
     {
         if (self::$authSchemaReady) {
@@ -33,12 +50,12 @@ final class Auth
         }
 
         if (!isset($columns['name'])) {
-            Database::run("ALTER TABLE users ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT ''");
-            Database::run('UPDATE users SET name = full_name');
+            Database::run("ALTER TABLE user ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT ''");
+            Database::run('UPDATE user SET name = full_name');
         }
         if (!isset($columns['full_name'])) {
-            Database::run("ALTER TABLE users ADD COLUMN full_name VARCHAR(100) NOT NULL DEFAULT ''");
-            Database::run('UPDATE users SET full_name = name');
+            Database::run("ALTER TABLE user ADD COLUMN full_name VARCHAR(100) NOT NULL DEFAULT ''");
+            Database::run('UPDATE user SET full_name = name');
         }
 
         $optionalColumns = [
@@ -53,21 +70,9 @@ final class Auth
         ];
         foreach ($optionalColumns as $column => $definition) {
             if (!isset($columns[$column])) {
-                Database::run("ALTER TABLE users ADD COLUMN `$column` $definition");
+                Database::run("ALTER TABLE user ADD COLUMN `$column` $definition");
             }
         }
-
-        Database::run(
-            'CREATE TABLE IF NOT EXISTS sessions (
-                token CHAR(64) NOT NULL,
-                user_id CHAR(36) NOT NULL,
-                expires_at DATETIME NOT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (token),
-                KEY ix_sessions_user (user_id),
-                KEY ix_sessions_expiry (expires_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-        );
 
         self::$authSchemaReady = true;
     }
@@ -82,19 +87,13 @@ final class Auth
         }
         self::$resolved = true;
 
-        $token = Request::capture()->cookie(AQ_SESSION_COOKIE);
-        if ($token === null || $token === '') {
+        self::startSession();
+        $userId = (string) ($_SESSION['user_id'] ?? '');
+        if ($userId === '') {
             return self::$currentUser = null;
         }
 
-        // Expired rows are cleared lazily so the table does not grow forever.
-        Database::run('DELETE FROM sessions WHERE expires_at <= NOW()');
-
-        $row = Database::one(
-            'SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-             WHERE s.token = ? LIMIT 1',
-            [$token]
-        );
+        $row = Database::one('SELECT * FROM user WHERE id = ? LIMIT 1', [$userId]);
 
         return self::$currentUser = $row === null ? null : self::publicUser($row);
     }
@@ -102,20 +101,9 @@ final class Auth
     public static function login(array $user): void
     {
         self::ensureAuthSchema();
-        $token = bin2hex(random_bytes(32));
-
-        Database::run(
-            'INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))',
-            [$token, $user['id'], AQ_SESSION_TTL]
-        );
-
-        // Name matches the cookie js/auth.js logout() expires on the client.
-        setcookie(AQ_SESSION_COOKIE, $token, [
-            'expires'  => time() + AQ_SESSION_TTL,
-            'path'     => '/',
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
+        self::startSession();
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (string) $user['id'];
 
         self::$currentUser = $user;
         self::$resolved    = true;
@@ -124,17 +112,17 @@ final class Auth
     public static function logout(): void
     {
         self::ensureAuthSchema();
-        $token = Request::capture()->cookie(AQ_SESSION_COOKIE);
-        if ($token !== null && $token !== '') {
-            Database::run('DELETE FROM sessions WHERE token = ?', [$token]);
+        self::startSession();
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            setcookie(AQ_SESSION_COOKIE, '', [
+                'expires' => time() - 3600,
+                'path' => '/',
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
         }
-
-        setcookie(AQ_SESSION_COOKIE, '', [
-            'expires'  => time() - 3600,
-            'path'     => '/',
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
+        session_destroy();
 
         self::$currentUser = null;
         self::$resolved    = true;
@@ -150,13 +138,13 @@ final class Auth
             return null;
         }
 
-        return Database::one('SELECT * FROM users WHERE email = ? LIMIT 1', [$email]);
+        return Database::one('SELECT * FROM user WHERE email = ? LIMIT 1', [$email]);
     }
 
     public static function findById(string $id): ?array
     {
         self::ensureAuthSchema();
-        return Database::one('SELECT * FROM users WHERE id = ? LIMIT 1', [$id]);
+        return Database::one('SELECT * FROM user WHERE id = ? LIMIT 1', [$id]);
     }
 
     public static function authenticate(string $email, string $password): ?array
@@ -178,12 +166,15 @@ final class Auth
     /**
      * @return array{user?:array<string,mixed>,error?:string}
      */
-    public static function createUser(string $email, string $password, string $name, string $role, string $station = '', string $phone = '', int $remember = 0): array
+    public static function createUser(string $email, string $password, string $name, string $role, string $station = '', ?string $phone = null, int $remember = 0): array
     {
         $email    = strtolower(trim($email));
         $name     = trim($name);
         $station  = trim($station);
-        $phone    = trim($phone);
+        $phone    = $phone === null ? null : trim($phone);
+        if ($phone === '') {
+            $phone = null;
+        }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return ['error' => 'Please enter a valid email address.'];
@@ -201,8 +192,10 @@ final class Auth
             return ['error' => 'Station name is required for this role.'];
         }
 
-        $id = Database::uuid();
-        $stationId = $role === 'staff' ? 'drink-refill' : '';
+        $id = Database::nextReadableId('users');
+        $stationId = $role === 'staff'
+            ? (string) (Database::scalar('SELECT id FROM station ORDER BY id ASC LIMIT 1') ?? '')
+            : '';
 
         $subtitle = match ($role) {
             'owner' => $station !== '' ? $station : 'Station owner',
@@ -220,7 +213,7 @@ final class Auth
         $pdo->beginTransaction();
         try {
             Database::run(
-                'INSERT INTO users (
+                'INSERT INTO user (
                     id, email, password_hash, name, full_name, role, subtitle,
                     station, station_id, permissions, phone, location, status,
                     remember_me, created_at
@@ -243,9 +236,15 @@ final class Auth
                 ]
             );
             if ($role === 'customer') {
-                Database::run('INSERT INTO customers (user_id, default_address, aqua_points) VALUES (?, ?, ?)', [$id, '', 0]);
+                Database::run(
+                    'INSERT INTO customer (id, user_id, default_address, aqua_points) VALUES (?, ?, ?, ?)',
+                    [Database::uuid(), $id, '', 0]
+                );
             } elseif ($role === 'owner') {
-                Database::run('INSERT INTO station_owners (user_id, business_name) VALUES (?, ?)', [$id, $station]);
+                Database::run(
+                    'INSERT INTO station_owner (id, user_id, owner_name) VALUES (?, ?, ?)',
+                    [Database::nextReadableId('owners'), $id, $name]
+                );
             }
             $pdo->commit();
         } catch (\PDOException $e) {
@@ -272,13 +271,13 @@ final class Auth
             return ['error' => 'Enter a valid name and email address.'];
         }
 
-        $duplicate = Database::one('SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1', [$email, $id]);
+        $duplicate = Database::one('SELECT id FROM user WHERE email = ? AND id <> ? LIMIT 1', [$email, $id]);
         if ($duplicate !== null) {
             return ['error' => 'That email address is already in use.'];
         }
 
         Database::run(
-            'UPDATE users SET name = ?, full_name = ?, email = ?, phone = ?, location = ? WHERE id = ?',
+            'UPDATE user SET name = ?, full_name = ?, email = ?, phone = ?, location = ? WHERE id = ?',
             [
                 $name,
                 $name,
@@ -292,42 +291,97 @@ final class Auth
         return self::publicUser((array) self::findById($id));
     }
 
+    /** @return array{success?:bool,error?:string} */
+    public static function changePassword(string $id, string $currentPassword, string $newPassword): array
+    {
+        $user = self::findById($id);
+        if ($user === null) {
+            return ['error' => 'Account not found.'];
+        }
+        if (!password_verify($currentPassword, (string) $user['password_hash'])) {
+            return ['error' => 'Current password is incorrect.'];
+        }
+        if (strlen($newPassword) < 8) {
+            return ['error' => 'New password must be at least 8 characters.'];
+        }
+
+        Database::run(
+            'UPDATE user SET password_hash = ? WHERE id = ?',
+            [password_hash($newPassword, PASSWORD_DEFAULT), $id]
+        );
+
+        return ['success' => true];
+    }
+
     // -- owner staff-approval workflow ---------------------------------------
 
     /** @return list<array<string,mixed>> */
-    public static function listPendingStaff(string $station): array
+    public static function listPendingStaff(string $stationId, string $stationName = ''): array
     {
+        $stationName = trim($stationName);
         $rows = Database::all(
-            "SELECT * FROM users
-             WHERE role = 'staff' AND status = 'pending' AND LOWER(station) = LOWER(?)
-             ORDER BY created_at ASC",
-            [trim($station)]
+            "SELECT u.* FROM user u
+             LEFT JOIN staff st ON st.user_id = u.id
+             WHERE u.role = 'staff' AND u.status = 'pending'
+               AND (
+                    st.station_id = ?
+                    OR u.station_id = ?
+                    OR (? <> '' AND LOWER(u.station) = LOWER(?))
+               )
+             ORDER BY u.created_at ASC",
+            [$stationId, $stationId, $stationName, $stationName]
         );
 
         return array_map([self::class, 'publicUser'], $rows);
     }
 
     /** @return array<string,mixed>|null */
-    public static function decideStaffApproval(string $id, string $station, string $decision): ?array
-    {
+    public static function decideStaffApproval(
+        string $id,
+        string $stationId,
+        string $stationName,
+        string $decision,
+        string $approverId = ''
+    ): ?array {
         if (!in_array($decision, ['approve', 'reject'], true)) {
             return null;
         }
 
         $user = self::findById($id);
+        $matchesStation = $user !== null && (
+            (string) ($user['station_id'] ?? '') === $stationId
+            || ($stationName !== '' && strtolower((string) ($user['station'] ?? '')) === strtolower($stationName))
+        );
+
         if (
             $user === null
             || $user['role'] !== 'staff'
             || $user['status'] !== 'pending'
-            || strtolower((string) $user['station']) !== strtolower(trim($station))
+            || !$matchesStation
         ) {
             return null;
         }
 
+        $status = $decision === 'approve' ? 'active' : 'rejected';
         Database::run(
-            'UPDATE users SET status = ?, reviewed_at = NOW() WHERE id = ?',
-            [$decision === 'approve' ? 'active' : 'rejected', $id]
+            'UPDATE user SET status = ?, station_id = ?, station = ?, reviewed_at = NOW() WHERE id = ?',
+            [$status, $stationId, $stationName !== '' ? $stationName : (string) ($user['station'] ?? ''), $id]
         );
+
+        if ($decision === 'approve') {
+            $existing = Database::one('SELECT id FROM staff WHERE user_id = ? LIMIT 1', [$id]);
+            if ($existing === null) {
+                Database::run(
+                    'INSERT INTO staff (id, user_id, station_id, approved_by, status) VALUES (?, ?, ?, ?, ?)',
+                    [Database::uuid(), $id, $stationId, $approverId !== '' ? $approverId : null, 'active']
+                );
+            } else {
+                Database::run(
+                    'UPDATE staff SET station_id = ?, approved_by = ?, status = ? WHERE id = ?',
+                    [$stationId, $approverId !== '' ? $approverId : null, 'active', $existing['id']]
+                );
+            }
+        }
 
         return self::publicUser((array) self::findById($id));
     }

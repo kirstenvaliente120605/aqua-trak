@@ -18,14 +18,16 @@
     LOCATION: "aquatracker_customer_location",
   };
 
-  // Davao City - used only when the customer has no saved point yet.
-  const DEFAULT_CENTER = { lat: 7.1907, lng: 125.4553 };
+  // Pagadian City - keep the initial map view over the station catalog.
+  const DEFAULT_CENTER = { lat: 7.830000, lng: 123.441000 };
   const DEFAULT_ZOOM = 12;
   const FOCUS_ZOOM = 15;
 
   const LEAFLET_VERSION = "1.9.4";
   const LEAFLET_CSS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`;
   const LEAFLET_JS = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`;
+  const LEAFLET_CSS_INTEGRITY = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+  const LEAFLET_JS_INTEGRITY = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
 
   // Standard OpenStreetMap raster tiles - no API key, no account needed.
   const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -58,11 +60,15 @@
         const link = document.createElement("link");
         link.rel = "stylesheet";
         link.href = LEAFLET_CSS;
+        link.integrity = LEAFLET_CSS_INTEGRITY;
+        link.crossOrigin = "";
         document.head.appendChild(link);
       }
 
       const script = document.createElement("script");
       script.src = LEAFLET_JS;
+      script.integrity = LEAFLET_JS_INTEGRITY;
+      script.crossOrigin = "anonymous";
       script.async = true;
       script.onload = () =>
         global.L ? resolve(global.L) : reject(new Error("unknown"));
@@ -284,7 +290,7 @@
   /**
    * Builds the interactive map inside containerId.
    *
-   * Restores the saved point when there is one, otherwise centres on Davao
+   * Restores the saved point when there is one, otherwise centres on Pagadian
    * City. Clicking the map or dragging the marker saves a new point.
    * options.onChange(record) fires whenever the point changes.
    */

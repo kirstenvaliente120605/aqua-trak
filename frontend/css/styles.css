@@ -520,26 +520,46 @@ footer {
   box-shadow: 0 0 0 3px rgba(11, 125, 128, 0.15);
 }
 
-.password-input {
+.password-toggle-wrap {
   position: relative;
-  display: flex;
-  align-items: center;
-}
-.password-input input {
+  display: block;
   width: 100%;
-  padding-right: 60px;
 }
-.password-input button {
+.password-toggle-wrap > input {
+  width: 100%;
+  padding-right: 3rem;
+}
+.password-toggle-button {
   position: absolute;
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: 0;
   background: none;
+  appearance: none;
   color: var(--teal);
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px;
+  padding: 7px;
+  cursor: pointer;
+}
+.password-toggle-button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.password-toggle-button:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .check {

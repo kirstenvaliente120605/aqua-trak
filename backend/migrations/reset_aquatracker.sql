@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `user` (
 CREATE TABLE IF NOT EXISTS `station_owner` (
   `id`            CHAR(36)     NOT NULL DEFAULT (UUID()),
   `user_id`       CHAR(36)     NOT NULL,
-  `business_name` VARCHAR(190) NOT NULL,
+  `owner_name`    VARCHAR(190) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_station_owner_user` (`user_id`),
   KEY `ix_station_owner_user` (`user_id`),
@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS `station_owner` (
     FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Atomic counters used by the PHP API for readable user and owner IDs.
+CREATE TABLE IF NOT EXISTS `id_sequence` (
+  `name`  VARCHAR(32)     NOT NULL,
+  `value` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO `id_sequence` (`name`, `value`) VALUES ('users', 0), ('owners', 0), ('stations', 0);
 
 -- ---------------------------------------------------------------------------
 -- 3. NOTIFICATION (1:N from user)

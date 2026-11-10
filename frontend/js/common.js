@@ -103,14 +103,48 @@
     return value;
   }
 
+  async function api(path, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (options.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const res = await fetch(path, {
+      credentials: "same-origin",
+      ...options,
+      headers,
+    });
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (error) {
+      data = null;
+    }
+
+    if (!res.ok) {
+      const message = data && (data.error || data.message);
+      throw new Error(message || `Request failed (${res.status}).`);
+    }
+
+    return data || {};
+  }
+
   async function fetchStations() {
     return read(STORE_KEYS.STATIONS, []);
   }
 
   async function fetchOrders(stationId = null, userId = null) {
-    let orders = read(STORE_KEYS.ORDERS, []);
+    if (userId) {
+      let orders = read(STORE_KEYS.ORDERS, []);
+      orders = orders.filter(order => order.userId === userId);
+      if (stationId) orders = orders.filter(order => order.stationId === stationId);
+      return orders;
+    }
+
+    const data = await api("/api/staff/orders");
+    let orders = Array.isArray(data.orders) ? data.orders : [];
     if (stationId) orders = orders.filter(order => order.stationId === stationId);
-    if (userId) orders = orders.filter(order => order.userId === userId);
     return orders;
   }
 
@@ -132,6 +166,7 @@
 
   const AquaCommon = {
     initStore,
+    api,
     fetchStations,
     fetchOrders,
     pushNotification,

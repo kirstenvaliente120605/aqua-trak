@@ -88,7 +88,7 @@ final class Router
         );
 
         $regex = preg_quote((string) $tokenized, '#');
-        $regex = preg_replace_callback('/__AQPARAM\d+__/', static fn (): string => '([^/]+)', $regex);
+        $regex = preg_replace('/__AQPARAM\d+__/', '([^/]+)', $regex);
 
         $this->routes[] = [
             'method'     => $method,

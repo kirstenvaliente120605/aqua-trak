@@ -5,12 +5,14 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "node --watch server.js",
+    "dev": "node server.js",
     "start": "node server.js",
     "serve": "node server.js",
-    "check": "node --check server.js && node --check backend/src/app.js && node --check backend/src/routes/index.js && node --check backend/src/services/authStore.js && node --check frontend/js/app.js && node --check frontend/js/auth.js",
+    "coords:fix": "node scripts/fix-station-coords.mjs",
+    "coords:validate": "node scripts/validate-station-coords.mjs",
+    "check": "C:\\xampp\\php\\php.exe -l backend/api/index.php && C:\\xampp\\php\\php.exe -l backend/api/src/Controllers/ErdController.php && node --check frontend/js/app.js && node --check frontend/js/auth.js && node --check frontend/js/dashboard.js",
     "test": "node backend/tests/api.test.mjs && node backend/tests/stations.test.mjs",
-    "format": "prettier --write src server.js public"
+    "format": "prettier --write frontend backend/api"
   },
   "dependencies": {
     "express": "^4.21.2",

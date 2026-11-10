@@ -190,8 +190,11 @@
   function pickupStatusLabel(status) {
     const labels = {
       new: 'New',
+      pending: 'Pending',
+      confirmed: 'Confirmed',
       preparing: 'Preparing',
       ready_for_pickup: 'Ready for pickup',
+      'out-for-delivery': 'Out for delivery',
       completed: 'Collected & paid',
       cancelled: 'Cancelled',
     };
@@ -201,8 +204,11 @@
   function pickupStatusClass(status) {
     const map = {
       new: 'new',
+      pending: 'pending',
+      confirmed: 'confirmed',
       preparing: 'preparing',
       ready_for_pickup: 'ready_for_pickup',
+      'out-for-delivery': 'out-for-delivery',
       completed: 'completed',
       cancelled: 'cancelled',
     };
@@ -390,11 +396,23 @@
 
   function statusClass(status) {
     const normalized = String(status || "").toLowerCase();
+    if (normalized.includes("out for delivery") || normalized.includes("out-for-delivery")) return "out-for-delivery";
     if (normalized.includes("deliver") || normalized.includes("complete") || normalized === "active" || normalized === "approved" || normalized === "present") return "completed";
     if (normalized.includes("prepar") || normalized.includes("progress") || normalized.includes("ready") || normalized.includes("scheduled")) return "out-for-delivery";
     if (normalized.includes("reject") || normalized.includes("cancel") || normalized.includes("absent")) return "slate";
     if (normalized.includes("pending") || normalized.includes("new") || normalized.includes("open")) return "pending";
     return "blue";
+  }
+
+  function statusText(status) {
+    const labels = {
+      "new": "New", "new order": "New", "pending": "Pending", "confirmed": "Confirmed",
+      "preparing": "Preparing", "ready": "Ready for pickup", "ready_for_pickup": "Ready for pickup",
+      "out for delivery": "Out for delivery", "out-for-delivery": "Out for delivery",
+      "delivered": "Completed", "complete": "Completed", "completed": "Completed", "cancelled": "Cancelled",
+    };
+    const key = String(status || "").toLowerCase();
+    return labels[key] || String(status || "").replace(/_/g, " ");
   }
 
   function formatDate(value) {
@@ -471,13 +489,16 @@
           <div class="dashboard-panel-heading"><div><span class="eyebrow">Fulfillment pipeline</span><h3>Station orders</h3></div><span class="pill ${active.length ? "pending" : "completed"}">${active.length} active</span></div>
           ${active.length ? `<div class="dashboard-order-list">${active.map(order => {
             const status = String(order.status || "").toLowerCase();
-            const stageIndex = status.includes("deliver") || status.includes("complete") ? 3 : status.includes("ready") ? 2 : status.includes("prepar") || status.includes("confirm") ? 1 : 0;
+            const stageIndex = status.includes("complete") || status === "delivered" ? 3
+              : status.includes("out for delivery") || status.includes("out-for-delivery") || status.includes("ready") ? 2
+                : status.includes("prepar") || status.includes("confirm") ? 1
+                  : 0;
             const currentLabel = stages[stageIndex];
             return `
               <article class="glass-card dashboard-queue-card">
                 <div class="dashboard-queue-top">
                   <div class="dashboard-person-main"><span class="dashboard-avatar small">${getInitials(order.customerName)}</span><div><span class="eyebrow">${order.id} · ${order.gallons || 0} gallon${Number(order.gallons) === 1 ? "" : "s"}</span><h3>${order.customerName || "Customer"}</h3></div></div>
-                  <span class="pill ${statusClass(order.status)}">${order.status}</span>
+                  <span class="pill ${statusClass(order.status)}">${statusText(order.status)}</span>
                 </div>
                 <div class="dashboard-stage-track">${stages.map((stage, index) => `<div class="dashboard-stage ${index < stageIndex ? "done" : ""} ${index === stageIndex ? "current" : ""}"><span>${index < stageIndex ? "✓" : index + 1}</span><small>${stage}</small></div>`).join("")}</div>
                 <div class="dashboard-queue-footer"><span>${order.fulfillment === "delivery" ? "Delivery" : "Station pickup"} · ₱${Number(order.total || 0).toFixed(2)}</span><button class="button small amber" onclick="advanceOrder('${order.id}')">${currentLabel === "Ready" ? "Complete order →" : "Advance order →"}</button></div>
@@ -572,15 +593,7 @@
 
   async function renderProfile(container) {
     try {
-      const profileKey = `aquatracker_profile_staff_${currentUser.email}`;
-      let saved = {};
-      try {
-        saved = JSON.parse(localStorage.getItem(profileKey) || "{}");
-      } catch (err) {
-        console.error("Invalid saved staff profile:", err);
-        localStorage.removeItem(profileKey);
-      }
-      const profile = { ...currentUser, ...saved };
+      const profile = { ...currentUser };
       const memberSince = profile.createdAt
         ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })
         : "Station team";
@@ -604,7 +617,7 @@
               <label>Email address<input value="${profile.email}" readonly></label>
               <label>Station<input value="${profile.station || currentUser.station}" readonly></label>
             </div>
-            <div class="dashboard-form-footer"><p>Your personal details are saved on this device.</p><button class="button amber" onclick="saveStaffProfile()">Save profile</button></div>
+            <div class="dashboard-form-footer"><p>Your personal details update your AquaTracker account.</p><button class="button amber" onclick="saveStaffProfile()">Save profile</button></div>
           </section>
         </div>`;
     } catch (err) {
@@ -613,34 +626,68 @@
     }
   }
 
-  function saveStaffProfile() {
-    const profileKey = `aquatracker_profile_staff_${currentUser.email}`;
-    const profile = {
-      name: document.getElementById('staff-profile-name').value.trim(),
-      phone: document.getElementById('staff-profile-phone').value.trim(),
-    };
-    if (!profile.name) return showToast("Name is required.");
-    localStorage.setItem(profileKey, JSON.stringify(profile));
-    showToast("Prototype profile saved on this device.");
+  async function saveStaffProfile() {
+    const name = document.getElementById('staff-profile-name').value.trim();
+    const phone = document.getElementById('staff-profile-phone').value.trim();
+    if (!name) return showToast("Name is required.");
+
+    try {
+      const updated = await global.AquaDashboard.updateProfile({
+        name,
+        phone,
+        email: currentUser.email,
+        location: currentUser.location || "",
+      });
+      if (updated) {
+        currentUser = updated;
+        global.AquaAuth.setCurrentUser(currentUser);
+      }
+      showToast("Profile updated successfully.");
+      await renderProfile(document.getElementById('main-content'));
+    } catch (err) {
+      console.error("Error saving staff profile:", err);
+      showToast(err.message || "Failed to save profile.");
+    }
   }
 
   async function advanceOrder(orderId) {
-    const orders = await global.AquaCommon.fetchOrders();
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return showToast("Order was not found for this station.");
-    const stages = ['New', 'Confirmed', 'Preparing', 'Ready for Pickup', 'Delivered'];
-    const current = stages.indexOf(
-      order.status === 'New order' ? 'New' : order.status
-    );
-    const nextStatus = stages[current + 1];
-    if (!nextStatus) return showToast("This order is already complete.");
-    await global.AquaStaff.updateOrderStatus(orderId, nextStatus);
-    await switchSection('station-orders');
+    try {
+      const orders = await global.AquaCommon.fetchOrders();
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return showToast("Order was not found for this station.");
+
+      const sequences = {
+        pickup: ['new', 'preparing', 'ready_for_pickup', 'completed'],
+        delivery: ['pending', 'confirmed', 'out-for-delivery', 'completed'],
+      };
+      const sequence = sequences[order.fulfillment] || sequences.delivery;
+      const status = String(order.status || '').toLowerCase() === 'new order'
+        ? 'new'
+        : String(order.status || '').toLowerCase();
+      const current = sequence.indexOf(status);
+      const nextStatus = current < 0 ? sequence[0] : sequence[current + 1];
+      if (!nextStatus || nextStatus === status) {
+        return showToast("This order is already complete.");
+      }
+
+      await global.AquaStaff.updateOrderStatus(orderId, nextStatus);
+      await switchSection('station-orders');
+      showToast(`Order ${orderId} moved to ${statusText(nextStatus)}.`);
+    } catch (err) {
+      console.error("Could not advance order:", err);
+      showToast(err.message || "That order could not be updated. Please try again.");
+    }
   }
 
   async function adjustStock(item, amount) {
-    await global.AquaStaff.updateInventory(currentUser.stationId, item, amount);
-    switchSection('inventory');
+    try {
+      await global.AquaStaff.updateInventory(currentUser.stationId, item, amount);
+      await switchSection('inventory');
+      showToast("Inventory updated.");
+    } catch (err) {
+      console.error("Could not update inventory:", err);
+      showToast(err.message || "Inventory could not be updated. Please try again.");
+    }
   }
 
   global.setUser = function(user) {
@@ -650,12 +697,18 @@
     startPickupPolling();
   };
   global.showToast = global.showToast || function(message) {
-    const toast = document.getElementById('toast');
-    if (toast) {
-      toast.textContent = message;
-      toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 3000);
+    let toast = document.getElementById('toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'toast';
+      toast.className = 'toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      document.body.append(toast);
     }
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
   };
   global.switchSection = switchSection;
   global.advanceOrder = advanceOrder;

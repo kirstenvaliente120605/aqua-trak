@@ -61,18 +61,30 @@ final class AuthController
             Response::redirect("/auth/$role/register?error=passwords");
         }
 
+        $fullName = $ctx->str('name');
+        $rawPhone = $ctx->input('phone');
+        $phone = is_scalar($rawPhone) ? trim((string) $rawPhone) : '';
+        $phone = $phone !== '' ? $phone : null;
+
         $result = Auth::createUser(
             $email,
             $password,
-            $ctx->str('name'),
+            $fullName,
             $role,
             $ctx->str('station'),
-            $ctx->str('phone'),
+            $phone,
             (int) $ctx->input('remember', 0)
         );
 
         if (isset($result['error'])) {
             Response::redirect("/auth/$role/register?error=" . rawurlencode((string) $result['error']));
+        }
+
+        try {
+            sendWelcomeEmail($email, $fullName, $role);
+        } catch (\Throwable $e) {
+            // Email delivery is best-effort; the committed account remains valid.
+            error_log('AquaTracker welcome email failed: ' . $e->getMessage());
         }
 
         // New staff cannot sign in until an owner approves the request.
@@ -156,18 +168,22 @@ final class AuthController
      */
     public static function listApprovals(RouteContext $ctx): never
     {
+        $stationId = OwnerController::stationId($ctx->user);
         Response::json([
-            'approvals' => Auth::listPendingStaff((string) ($ctx->user['station'] ?? '')),
+            'approvals' => Auth::listPendingStaff($stationId, OwnerController::stationName($stationId)),
         ]);
     }
 
-    /** POST /api/staff-approvals/:id — approve or reject a pending staff account. */
+    /** POST /api/staff-approvals/:id - approve or reject a pending staff account. */
     public static function decideApproval(RouteContext $ctx): never
     {
+        $stationId = OwnerController::stationId($ctx->user);
         $approval = Auth::decideStaffApproval(
             $ctx->param('id'),
-            (string) ($ctx->user['station'] ?? ''),
-            trim((string) $ctx->input('decision', ''))
+            $stationId,
+            OwnerController::stationName($stationId),
+            trim((string) $ctx->input('decision', '')),
+            (string) $ctx->user['id']
         );
 
         if ($approval === null) {
@@ -177,8 +193,50 @@ final class AuthController
         Response::json(['approval' => $approval]);
     }
 
+    /** PATCH /api/profile — save the signed-in customer's account details. */
+    public static function updateProfile(RouteContext $ctx): never
+    {
+        $updated = Auth::updateProfile((string) $ctx->user['id'], [
+            'name'     => $ctx->str('name'),
+            'email'    => $ctx->str('email'),
+            'phone'    => $ctx->str('phone'),
+            'location' => $ctx->str('location'),
+        ]);
+
+        if ($updated === null) {
+            Response::fail('Account not found.', 404);
+        }
+        if (isset($updated['error'])) {
+            Response::fail((string) $updated['error'], 400);
+        }
+
+        Response::json(['success' => true, 'user' => $updated]);
+    }
+
+    /** POST /api/profile/password — change the signed-in customer's password. */
+    public static function changePassword(RouteContext $ctx): never
+    {
+        $result = Auth::changePassword(
+            (string) $ctx->user['id'],
+            (string) $ctx->input('currentPassword', ''),
+            (string) $ctx->input('newPassword', '')
+        );
+
+        if (isset($result['error'])) {
+            Response::fail((string) $result['error'], 400);
+        }
+
+        Response::json(['success' => true]);
+    }
+
     private static function validRoleMode(string $role, string $mode): bool
     {
+        // The seeded administrator can sign in, but public admin registration
+        // is never available.
+        if ($role === 'admin') {
+            return $mode === 'login';
+        }
+
         return in_array($role, AQ_ROLES, true) && in_array($mode, ['login', 'register'], true);
     }
 }

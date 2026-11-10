@@ -74,13 +74,13 @@ export async function ensureDemoUsers() {
       if (!existing) {
         const id = crypto.randomUUID();
         await pool.execute(
-          "INSERT INTO user (id, email, password_hash, role, full_name, name, subtitle, station, station_id, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [id, demo.email.toLowerCase(), hash, demo.role, demo.name, demo.name, demo.subtitle || "", demo.station || "", demo.stationId || "", perms, "active"]
+          "INSERT INTO users (id, email, password_hash, role, name, subtitle, station, station_id, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, demo.email.toLowerCase(), hash, demo.role, demo.name, demo.subtitle || "", demo.station || "", demo.stationId || "", perms, "active"]
         );
       } else {
         await pool.execute(
-          "UPDATE users SET password_hash = ?, status = 'active', full_name = ?, name = ? WHERE email = ?",
-          [hash, demo.name, demo.name, demo.email.toLowerCase()]
+          "UPDATE users SET password_hash = ?, status = 'active', name = ? WHERE email = ?",
+          [hash, demo.name, demo.email.toLowerCase()]
         );
       }
     }
@@ -93,15 +93,15 @@ export async function ensureDemoUsers() {
 ensureDemoUsers();
 
 export async function listUsers() {
-  const [rows] = await pool.execute("SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, phone, location, status FROM user");
+  const [rows] = await pool.execute("SELECT id, email, role, name, subtitle, station, station_id, permissions, phone, location, status FROM users");
   return rows.map(rowToUser);
 }
 
 export async function listStaffApprovals(station) {
   const normalizedStation = String(station || "").trim();
   const query = normalizedStation
-    ? "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE role = 'staff' AND status = 'pending' AND station = ?"
-    : "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE role = 'staff' AND status = 'pending'";
+    ? "SELECT id, email, role, name, subtitle, station, station_id, permissions, status FROM users WHERE role = 'staff' AND status = 'pending' AND station = ?"
+    : "SELECT id, email, role, name, subtitle, station, station_id, permissions, status FROM users WHERE role = 'staff' AND status = 'pending'";
   const params = normalizedStation ? [normalizedStation] : [];
   const [rows] = await pool.execute(query, params);
   return rows.map(rowToUser);
@@ -117,14 +117,14 @@ export async function updateStaffApproval(id, station, decision) {
   const params = normalizedStation ? [status, id, normalizedStation] : [status, id];
   const [result] = await pool.execute(query, params);
   if (result.affectedRows === 0) return null;
-  const [rows] = await pool.execute("SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE id = ?", [id]);
+  const [rows] = await pool.execute("SELECT id, email, role, name, subtitle, station, station_id, permissions, status FROM users WHERE id = ?", [id]);
   return rowToUser(rows[0]);
 }
 
 export async function findUserByEmail(email) {
   const normalized = String(email || "").trim().toLowerCase();
   const [rows] = await pool.execute(
-    "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status, phone, location, password_hash as passwordHash FROM user WHERE email = ?",
+    "SELECT id, email, role, name, subtitle, station, station_id, permissions, status, phone, location, password_hash as passwordHash FROM users WHERE email = ?",
     [normalized]
   );
   return rowToUser(rows[0]);
@@ -148,12 +148,12 @@ export async function createUser({ email, password, name, role, station = "" }) 
   const status = role === "staff" ? "pending" : "active";
 
   await pool.execute(
-    "INSERT INTO user (id, email, password_hash, role, full_name, name, subtitle, station, station_id, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, normalized, hash, role, trimmedName, trimmedName, subtitle, stationTrim, stationId, permissions, status]
+    "INSERT INTO users (id, email, password_hash, role, name, subtitle, station, station_id, permissions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, normalized, hash, role, trimmedName, subtitle, stationTrim, stationId, permissions, status]
   );
 
   const [rows] = await pool.execute(
-    "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status FROM user WHERE id = ?",
+    "SELECT id, email, role, name, subtitle, station, station_id, permissions, status FROM users WHERE id = ?",
     [id]
   );
   return { user: rowToUser(rows[0]) };
@@ -163,13 +163,13 @@ export async function updateUserProfile(id, changes) {
   const name = String(changes.name || "").trim();
   const email = String(changes.email || "").trim().toLowerCase();
   if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid name and email address." };
-  const [dup] = await pool.execute("SELECT id FROM user WHERE email = ? AND id != ?", [email, id]);
+  const [dup] = await pool.execute("SELECT id FROM users WHERE email = ? AND id != ?", [email, id]);
   if (dup.length) return { error: "That email address is already in use." };
   await pool.execute(
-    "UPDATE users SET full_name = ?, name = ?, email = ?, phone = ?, location = ? WHERE id = ?",
-    [name, name, email, String(changes.phone || "").trim().slice(0, 40), String(changes.location || "").trim().slice(0, 120), id]
+    "UPDATE users SET name = ?, email = ?, phone = ?, location = ? WHERE id = ?",
+    [name, email, String(changes.phone || "").trim().slice(0, 40), String(changes.location || "").trim().slice(0, 120), id]
   );
-  const [rows] = await pool.execute("SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, phone, location, status FROM user WHERE id = ?", [id]);
+  const [rows] = await pool.execute("SELECT id, email, role, name, subtitle, station, station_id, permissions, phone, location, status FROM users WHERE id = ?", [id]);
   return rowToUser(rows[0]);
 }
 
@@ -197,7 +197,7 @@ export async function getSessionUser(token) {
     return null;
   }
   const [users] = await pool.execute(
-    "SELECT id, email, role, full_name, name, subtitle, station, station_id, permissions, status, phone, location FROM user WHERE id = ?",
+    "SELECT id, email, role, name, subtitle, station, station_id, permissions, status, phone, location FROM users WHERE id = ?",
     [session.user_id]
   );
   return rowToUser(users[0]);

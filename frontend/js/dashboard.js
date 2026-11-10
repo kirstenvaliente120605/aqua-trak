@@ -38,6 +38,38 @@
     return order && (order.fulfillmentType === "pickup" || order.fulfillment === "pickup");
   }
 
+  /**
+   * JSON fetch against the PHP API. Rejects with the server's own message so
+   * callers can surface a readable toast instead of "Unexpected token <".
+   */
+  async function apiFetch(path, options = {}) {
+    const res = await fetch(path, {
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error("Please sign in again to continue.");
+      }
+      throw new Error((data && data.error) || `Request failed (${res.status}).`);
+    }
+
+    return data;
+  }
+
   // Seed Data: Stations in Filipino Local Context
   const DEFAULT_STATIONS = [
     {
@@ -63,7 +95,7 @@
       pickupAvailable: true,
       minOrderGallons: 1,
       tag: "Best Value · Verified",
-      coords: { lat: 7.8269, lng: 123.4371 },
+      coords: { lat: 7.827330, lng: 123.444185 },
       products: [
         {
           type: "5-gal-slim",
@@ -129,7 +161,7 @@
       pickupAvailable: true,
       minOrderGallons: 1,
       tag: "Lowest Price",
-      coords: { lat: 7.8312, lng: 123.4437 },
+      coords: { lat: 7.831200, lng: 123.443700 },
       products: [
         {
           type: "5-gal-slim",
@@ -187,7 +219,7 @@
       pickupAvailable: true,
       minOrderGallons: 2,
       tag: "Fast Delivery",
-      coords: { lat: 7.8347, lng: 123.4481 },
+      coords: { lat: 7.834700, lng: 123.448100 },
       products: [
         {
           type: "5-gal-slim",
@@ -252,7 +284,7 @@
       pickupAvailable: true,
       minOrderGallons: 1,
       tag: "Standard",
-      coords: { lat: 7.8198, lng: 123.4297 },
+      coords: { lat: 7.819800, lng: 123.429700 },
       products: [
         {
           type: "5-gal-slim",
@@ -310,7 +342,7 @@
       pickupAvailable: true,
       minOrderGallons: 1,
       tag: "Community Favorite",
-      coords: { lat: 7.8191, lng: 123.4412 },
+      coords: { lat: 7.819100, lng: 123.441200 },
       products: [
         {
           type: "5-gal-slim",
@@ -376,7 +408,7 @@
       pickupAvailable: true,
       minOrderGallons: 1,
       tag: "24/7 Vendo Available",
-      coords: { lat: 7.8362, lng: 123.4264 },
+      coords: { lat: 7.836200, lng: 123.426400 },
       products: [
         {
           type: "5-gal-slim",
@@ -418,6 +450,18 @@
         comment:
           "The 24/7 coin vendo is a lifesaver when you run out of water late at night. Super clean machine!",
       },
+    },
+    {
+      id: "alka",
+      name: "Alka Water Refilling Station",
+      address: "Zone 11, Alta Tierra Subdivision, Tiguma, Pagadian City",
+      pricePerGallon: 35,
+      rating: 0,
+      phone: "",
+      hours: "",
+      deliveryAvailable: true,
+      pickupAvailable: true,
+      coords: { lat: 7.840580, lng: 123.463360 },
     },
   ];
 
@@ -722,16 +766,36 @@
    * Fetches nearby stations with optional query and filters.
    */
   async function fetchStations(query = "", filter = "all") {
-    /* BACKEND INTEGRATION STUB:
-     * const params = new URLSearchParams({ search: query, filter });
-     * const res = await fetch(`/api/stations?${params}`);
-     * return await res.json();
-     */
     initDataStores();
-    let stations = JSON.parse(
+    let cached = JSON.parse(
       localStorage.getItem(STORE_KEYS.STATIONS) || "[]"
     );
-    if (!stations.length) stations = DEFAULT_STATIONS;
+    if (!cached.length) cached = DEFAULT_STATIONS;
+
+    let stations = cached;
+    try {
+      const data = await apiFetch("/api/stations");
+      const live = Array.isArray(data.stations) ? data.stations : [];
+      if (live.length) {
+        stations = live.map(station => {
+          const local = cached.find(item => item.id === station.id)
+            || DEFAULT_STATIONS.find(item => item.id === station.id)
+            || {};
+          return {
+            ...local,
+            ...station,
+            name: station.name || local.name || "Water station",
+            address: station.address || local.address || "",
+            products: local.products || [],
+            schedule: local.schedule || [{ days: "Daily", hours: "Call station" }],
+            waterTypes: local.waterTypes || ["Purified"],
+            pricePerGallon: local.pricePerGallon ?? 0,
+          };
+        });
+      }
+    } catch (error) {
+      console.warn("Using cached stations:", error);
+    }
 
     // Ensure fallback hydration of enriched properties if existing records are partial
     stations = stations.map(s => {
@@ -833,113 +897,49 @@
    * Submits a customer water refill order.
    */
   async function placeRefillOrder(orderPayload) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch('/api/orders', {
-     *   method: 'POST',
-     *   headers: { 'Content-Type': 'application/json' },
-     *   body: JSON.stringify(orderPayload)
-     * });
-     * return await res.json();
-     * PROTOTYPE LIMITATION: Simulated payment gateway & simulated SMS rider dispatch.
-     */
-    initDataStores();
+    // Fail fast with readable messages before touching the network.
+    const items =
+      Array.isArray(orderPayload.items) && orderPayload.items.length
+        ? orderPayload.items
+        : orderPayload.containers || [];
 
-    // Normalise fulfillment once - every downstream branch keys off this.
-    const fulfillmentType =
-      orderPayload.fulfillmentType || orderPayload.fulfillment === "pickup"
-        ? orderPayload.fulfillmentType ||
-          (orderPayload.fulfillment === "pickup" ? "pickup" : "delivery")
-        : "delivery";
-    const isPickup = fulfillmentType === "pickup";
-
-    // Guard on the data, not on the UI. Pickup has exactly one valid payment
-    // method; anything else is a bad request and must not be persisted.
-    if (isPickup && orderPayload.paymentMethod !== PICKUP_PAYMENT_METHOD) {
-      throw new Error(
-        "Pickup orders must be paid at the counter (pay_at_counter)."
-      );
+    if (!orderPayload.stationId) {
+      throw new Error("Choose a station before placing an order.");
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("Add at least one item to the order.");
     }
 
-    const orders = JSON.parse(localStorage.getItem(STORE_KEYS.ORDERS) || "[]");
-    const newId = "AT-" + Math.floor(1000 + Math.random() * 9000);
-    const items = Array.isArray(orderPayload.items) && orderPayload.items.length
-      ? orderPayload.items
-      : orderPayload.containers || [];
+    const fulfillmentType =
+      orderPayload.fulfillmentType ||
+      (orderPayload.fulfillment === "pickup" ? "pickup" : "delivery");
+    const isPickup = fulfillmentType === "pickup";
 
-    const newOrder = {
-      id: newId,
-      stationId: orderPayload.stationId,
-      stationName: orderPayload.stationName || "Water Refilling Station",
-      stationAddress: orderPayload.stationAddress || "",
-      customerName: orderPayload.customerName || "AquaTracker Customer",
-      contactPhone: orderPayload.contactPhone || "",
-      // `items` is the canonical field; `containers` is kept as the legacy
-      // alias the existing order cards still read.
+    if (isPickup && orderPayload.paymentMethod !== PICKUP_PAYMENT_METHOD) {
+      throw new Error("Pickup orders must be paid at the counter.");
+    }
+
+    const payload = {
+      ...orderPayload,
       items,
       containers: items,
-      gallonsTotal: orderPayload.gallonsTotal,
       fulfillment: fulfillmentType,
       fulfillmentType,
-      deliveryAddress: isPickup ? "" : orderPayload.deliveryAddress || "",
-      landmark: isPickup ? "" : orderPayload.landmark || "None specified",
-      notes: orderPayload.notes || "",
-      paymentMethod: isPickup ? PICKUP_PAYMENT_METHOD : orderPayload.paymentMethod,
-      // Counter orders stay unpaid until station staff confirm the cash.
-      paymentStatus: isPickup ? "unpaid" : "paid",
-      subtotal: orderPayload.subtotal,
-      discount: orderPayload.discount,
-      // Counter pickup carries no delivery fee.
-      deliveryFee: isPickup ? 0 : Number(orderPayload.deliveryFee || 0),
-      total: isPickup
-        ? Math.max(0, Number(orderPayload.subtotal || 0) - Number(orderPayload.discount || 0))
-        : orderPayload.total,
-      pointsEarned: orderPayload.gallonsTotal * 10,
-      status: isPickup ? "new" : "pending",
-      timeline: isPickup
-        ? [
-            { status: "new", label: "Order Received at Station", time: "Just now", done: true },
-            { status: "preparing", label: "Station Preparing Refill", time: "Pending", done: false },
-            { status: "ready_for_pickup", label: "Ready for Counter Pickup", time: "Pending", done: false },
-            { status: "completed", label: "Picked Up & Paid", time: "Pending", done: false },
-          ]
-        : [
-            {
-              status: "pending",
-              label: "Order Received at Station",
-              time: "Just now",
-              done: true,
-            },
-            {
-              status: "confirmed",
-              label: "Station Preparing Refill",
-              time: "Pending",
-              done: false,
-            },
-            {
-              status: "out-for-delivery",
-              label:
-                orderPayload.fulfillment === "delivery"
-                  ? "Out for Delivery"
-                  : "Ready for Counter Pickup",
-              time: "Pending",
-              done: false,
-            },
-            {
-              status: "completed",
-              label: "Completed",
-              time: "Pending",
-              done: false,
-            },
-          ],
-      createdAt: new Date().toISOString(),
+      paymentMethod: isPickup
+        ? PICKUP_PAYMENT_METHOD
+        : orderPayload.paymentMethod,
     };
 
-    orders.unshift(newOrder);
-    localStorage.setItem(STORE_KEYS.ORDERS, JSON.stringify(orders));
+    // ORDER + ORDER_ITEM are written inside one transaction by the API.
+    const data = await apiFetch("/api/orders", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
 
-    // Mirror prototype customer orders into the shared owner/staff station
-    // queue. This is the SAME order the staff console works on, so it carries
-    // the full fulfillment/payment shape rather than a reduced copy.
+    const newOrder = data.order;
+
+    // Mirror the persisted order into the shared station queue the staff
+    // prototype UI reads. The database remains the source of truth.
     if (global.AquaCommon) {
       const stationOrders = global.AquaCommon.read(
         global.AquaCommon.STORE_KEYS.ORDERS,
@@ -971,18 +971,6 @@
       );
     }
 
-    // Award loyalty points
-    await addLoyaltyPoints(newOrder.pointsEarned, `Refill Order #${newId}`);
-
-    // Create notification
-    await pushNotification({
-      title: `Order #${newId} Placed!`,
-      message: isPickup
-        ? `Your pickup order (${newOrder.gallonsTotal} gal) from ${newOrder.stationName} is being prepared. Pay ₱${newOrder.total.toFixed(2)} at the counter.`
-        : `Your refill order (${newOrder.gallonsTotal} gal) from ${newOrder.stationName} was placed.`,
-      type: "order",
-    });
-
     return { success: true, order: newOrder };
   }
 
@@ -991,12 +979,8 @@
    * Retrieves user order history.
    */
   async function fetchOrders() {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch('/api/orders');
-     * return await res.json();
-     */
-    initDataStores();
-    return JSON.parse(localStorage.getItem(STORE_KEYS.ORDERS) || "[]");
+    const data = await apiFetch("/api/orders");
+    return Array.isArray(data.orders) ? data.orders : [];
   }
 
   /**
@@ -1004,66 +988,39 @@
    * Advances the mock order status along the 4-stage pipeline for demo testing.
    */
   async function advanceOrderStatus(orderId) {
-    initDataStores();
-    const orders = JSON.parse(localStorage.getItem(STORE_KEYS.ORDERS) || "[]");
-    const order = orders.find(o => o.id === orderId);
+    const orders = await fetchOrders();
+    const order = orders.find((o) => o.id === orderId);
     if (!order) return null;
 
-    const stages = ["pending", "confirmed", "out-for-delivery", "completed"];
+    const stages = isPickupOrder(order)
+      ? [...PICKUP_STATUS_FLOW]
+      : ["pending", "confirmed", "out-for-delivery", "completed"];
     const currentIndex = stages.indexOf(order.status);
-    if (currentIndex < stages.length - 1) {
-      const nextStage = stages[currentIndex + 1];
-      order.status = nextStage;
-
-      const timelineIdx = order.timeline.findIndex(t => t.status === nextStage);
-      if (timelineIdx !== -1) {
-        order.timeline[timelineIdx].done = true;
-        order.timeline[timelineIdx].time = "Just now";
-      }
-
-      localStorage.setItem(STORE_KEYS.ORDERS, JSON.stringify(orders));
-
-      await pushNotification({
-        title: `Order #${order.id} Updated: ${nextStage.replace(/-/g, " ").toUpperCase()}`,
-        message: `Your water refill is now: ${order.timeline[timelineIdx]?.label || nextStage}`,
-        type: "order",
-      });
+    if (currentIndex < 0 || currentIndex >= stages.length - 1) {
+      return order;
     }
 
-    return order;
+    const nextStage = stages[currentIndex + 1];
+    const data = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: nextStage }),
+    });
+
+    return data.order || order;
   }
 
   // ---------------------------------------------------------------------
-  // COUNTER-PICKUP — station staff side
+  // COUNTER-PICKUP - station staff side
   //
-  // These operate on the SAME order records the staff console already reads
-  // (the shared station queue). There is no separate pickup store: the
-  // customer record and the station record are two views of one order, so
-  // every write below is mirrored back onto both.
+  // Pickup and delivery orders share one ERD ORDER row, so staff status
+  // changes are immediately visible to the customer dashboard.
   // ---------------------------------------------------------------------
 
-  /** The shared station-side order store. */
-  function stationOrderStore() {
-    if (!global.AquaCommon) return { key: "aquatracker_orders_db", read: () => [], write: () => {} };
-    return {
-      key: global.AquaCommon.STORE_KEYS.ORDERS,
-      read: () => global.AquaCommon.read(global.AquaCommon.STORE_KEYS.ORDERS, []),
-      write: (orders) => global.AquaCommon.write(global.AquaCommon.STORE_KEYS.ORDERS, orders),
-    };
-  }
-
-  /**
-   * API-Swappable Stub for: GET /api/stations/:stationId/pickup-orders
-   * Incoming counter-pickup orders for one station, newest first.
-   */
+  /** Incoming counter-pickup orders for one station, newest first. */
   async function fetchPickupOrders(stationId) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch(`/api/stations/${stationId}/pickup-orders`);
-     * return await res.json();
-     */
-    initDataStores();
-    return stationOrderStore()
-      .read()
+    const data = await apiFetch("/api/staff/orders");
+    const orders = Array.isArray(data.orders) ? data.orders : [];
+    return orders
       .filter(
         (order) =>
           isPickupOrder(order) &&
@@ -1072,53 +1029,19 @@
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   }
 
-  /**
-   * API-Swappable Stub for: PATCH /api/orders/:id/status
-   * Advances a pickup order along PICKUP_STATUS_FLOW and mirrors the change
-   * onto the customer's own order record so their history stays in step.
-   */
+  /** PATCH /api/staff/orders/:id - advance a pickup order. */
   async function updatePickupOrderStatus(orderId, nextStatus) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch(`/api/orders/${orderId}/status`, {
-     *   method: 'PATCH',
-     *   headers: { 'Content-Type': 'application/json' },
-     *   body: JSON.stringify({ status: nextStatus }),
-     * });
-     * return await res.json();
-     */
-    initDataStores();
     const allowed = [...PICKUP_STATUS_FLOW, "cancelled"];
     if (!allowed.includes(nextStatus)) {
       throw new Error(`Unsupported pickup status: ${nextStatus}`);
     }
 
-    const store = stationOrderStore();
-    const orders = store.read();
-    const order = orders.find((o) => o.id === orderId && isPickupOrder(o));
-    if (!order) return null;
-
-    const now = new Date().toISOString();
-    order.status = nextStatus;
-    order.updatedAt = now;
-    store.write(orders);
-
-    // Mirror onto the customer-side record so their tracking card updates.
-    const customerOrders = JSON.parse(
-      localStorage.getItem(STORE_KEYS.ORDERS) || "[]"
+    const data = await apiFetch(
+      `/api/staff/orders/${encodeURIComponent(orderId)}`,
+      { method: "PATCH", body: JSON.stringify({ status: nextStatus }) }
     );
-    const mirror = customerOrders.find((o) => o.id === orderId);
-    if (mirror) {
-      mirror.status = nextStatus;
-      mirror.updatedAt = now;
-      const stage = (mirror.timeline || []).find((t) => t.status === nextStatus);
-      if (stage) {
-        stage.done = true;
-        stage.time = "Just now";
-      }
-      localStorage.setItem(STORE_KEYS.ORDERS, JSON.stringify(customerOrders));
-    }
 
-    return order;
+    return data.order || null;
   }
 
   /**
@@ -1126,254 +1049,154 @@
    * Staff confirm the cash was collected: marks the order paid and completed.
    */
   async function markPickupOrderPaid(orderId) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch(`/api/orders/${orderId}/collect-payment`, {
-     *   method: 'PATCH',
-     *   headers: { 'Content-Type': 'application/json' },
-     *   body: JSON.stringify({ paymentStatus: 'paid' }),
-     * });
-     * return await res.json();
-     */
-    const updated = await updatePickupOrderStatus(orderId, "completed");
-    if (!updated) return null;
-
-    const store = stationOrderStore();
-    const orders = store.read();
-    const order = orders.find((o) => o.id === orderId);
-    if (order) {
-      const paidAt = new Date().toISOString();
-      order.paymentStatus = "paid";
-      order.paidAt = paidAt;
-      order.amountCollected = Number(order.total || 0);
-      store.write(orders);
-      updated.paymentStatus = "paid";
-      updated.paidAt = paidAt;
-      updated.amountCollected = Number(order.total || 0);
-    }
-
-    // Keep the customer's copy truthful about payment.
-    const customerOrders = JSON.parse(
-      localStorage.getItem(STORE_KEYS.ORDERS) || "[]"
+    const data = await apiFetch(
+      `/api/staff/orders/${encodeURIComponent(orderId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status: "completed", paymentStatus: "paid" }),
+      }
     );
-    const mirror = customerOrders.find((o) => o.id === orderId);
-    if (mirror) {
-      mirror.paymentStatus = "paid";
-      mirror.paidAt = updated.paidAt;
-      localStorage.setItem(STORE_KEYS.ORDERS, JSON.stringify(customerOrders));
-    }
 
-    return updated;
+    return data.order || null;
   }
 
   /**
    * API-Swappable Stub for: GET /api/subscriptions
    */
   async function fetchSubscriptions() {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch(API_BASE + '/api/subscriptions');
-     * return await res.json();
-     */
-    initDataStores();
-    return JSON.parse(localStorage.getItem(STORE_KEYS.SUBSCRIPTIONS) || "[]");
+    const data = await apiFetch("/api/subscriptions");
+    return Array.isArray(data.subscriptions) ? data.subscriptions : [];
   }
 
   /**
-   * API-Swappable Stub for: POST /api/subscriptions
+   * Persists a SUBSCRIPTION row (plus its SUBSCRIPTION_PLAN) for the customer.
    */
   async function createSubscription(subPayload) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch(API_BASE + '/api/subscriptions', { method: 'POST', body: JSON.stringify(subPayload) });
-     * return await res.json();
-     */
-    initDataStores();
-    const subs = JSON.parse(
-      localStorage.getItem(STORE_KEYS.SUBSCRIPTIONS) || "[]"
-    );
-    const newSub = {
-      id: "sub-" + Math.floor(1000 + Math.random() * 9000),
-      stationId: subPayload.stationId,
-      stationName: subPayload.stationName,
-      frequency: subPayload.frequency,
-      frequencyLabel:
-        subPayload.frequency === "weekly"
-          ? "Every Week"
-          : subPayload.frequency === "biweekly"
-            ? "Every 2 Weeks"
-            : "Every Month",
-      containerType: subPayload.containerType || "5-Gallon Container",
-      gallonsPerRefill: subPayload.gallonsPerRefill,
-      basePrice: subPayload.basePrice,
-      subscriptionDiscount: subPayload.basePrice * 0.1,
-      estimatedTotal: subPayload.basePrice * 0.9,
-      status: "active",
-      nextRefillDate: "Next refill in 7 days",
-      deliveryAddress: subPayload.deliveryAddress,
-      paymentMethod: subPayload.paymentMethod || "Cash on Delivery",
-      createdAt: new Date().toISOString(),
-    };
+    if (!subPayload || !subPayload.stationId) {
+      throw new Error("Choose a station for the subscription.");
+    }
 
-    subs.unshift(newSub);
-    localStorage.setItem(STORE_KEYS.SUBSCRIPTIONS, JSON.stringify(subs));
-
-    await pushNotification({
-      title: "Subscription Activated!",
-      message: `Recurring refill plan registered with ${newSub.stationName} (10% discount applied).`,
-      type: "subscription",
+    const data = await apiFetch("/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(subPayload),
     });
 
-    return { success: true, subscription: newSub };
+    return { success: true, subscription: data.subscription };
   }
 
   /**
    * API-Swappable Stub for: PATCH /api/subscriptions/:id
    */
   async function updateSubscriptionStatus(subId, newStatus) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch(`/api/subscriptions/${subId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-     * return await res.json();
-     */
-    initDataStores();
-    const subs = JSON.parse(
-      localStorage.getItem(STORE_KEYS.SUBSCRIPTIONS) || "[]"
+    const data = await apiFetch(
+      `/api/subscriptions/${encodeURIComponent(subId)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status: newStatus }) }
     );
-    const sub = subs.find(s => s.id === subId);
-    if (!sub) return { success: false, error: "Subscription not found" };
 
-    sub.status = newStatus;
-    localStorage.setItem(STORE_KEYS.SUBSCRIPTIONS, JSON.stringify(subs));
-
-    await pushNotification({
-      title: `Subscription ${newStatus.toUpperCase()}`,
-      message: `Your refill plan with ${sub.stationName} has been ${newStatus}.`,
-      type: "subscription",
-    });
-
-    return { success: true, subscription: sub };
+    return { success: true, subscription: data.subscription };
   }
 
   /**
    * API-Swappable Stub for: GET /api/loyalty
    */
   async function fetchLoyalty() {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch('/api/loyalty');
-     * return await res.json();
-     */
-    initDataStores();
-    return JSON.parse(
-      localStorage.getItem(STORE_KEYS.LOYALTY) ||
-        JSON.stringify(DEFAULT_LOYALTY)
-    );
+    const data = await apiFetch("/api/loyalty");
+    return {
+      balance: Number(data.balance || 0),
+      tier: data.tier || "Bronze",
+      nextTierPoints: Number(data.nextTierPoints || 500),
+      history: Array.isArray(data.history) ? data.history : [],
+      rewardsCatalog: Array.isArray(data.rewardsCatalog)
+        ? data.rewardsCatalog
+        : [],
+    };
   }
 
   /**
-   * API-Swappable Stub for: POST /api/loyalty/points
+   * Points are awarded server-side when an order is created. Kept as a
+   * local-only shim so any remaining prototype callers fail soft.
    */
   async function addLoyaltyPoints(pts, reason) {
-    initDataStores();
-    const loyalty = JSON.parse(
-      localStorage.getItem(STORE_KEYS.LOYALTY) ||
-        JSON.stringify(DEFAULT_LOYALTY)
-    );
-    loyalty.balance += pts;
-    loyalty.history.unshift({
-      id: "lh-" + Date.now(),
-      type: "earn",
-      title: reason,
-      points: pts,
-      date: "Just now",
-    });
-    localStorage.setItem(STORE_KEYS.LOYALTY, JSON.stringify(loyalty));
+    const loyalty = await fetchLoyalty().catch(() => ({ ...DEFAULT_LOYALTY }));
     return loyalty;
   }
 
   /**
-   * API-Swappable Stub for: POST /api/loyalty/redeem
+   * Deducts points and issues a CUSTOMER_REWARD voucher.
    */
   async function redeemLoyaltyReward(rewardId) {
-    /* BACKEND INTEGRATION STUB:
-     * const res = await fetch('/api/loyalty/redeem', { method: 'POST', body: JSON.stringify({ rewardId }) });
-     * return await res.json();
-     */
-    initDataStores();
-    const loyalty = JSON.parse(
-      localStorage.getItem(STORE_KEYS.LOYALTY) ||
-        JSON.stringify(DEFAULT_LOYALTY)
-    );
-    const reward = loyalty.rewardsCatalog.find(r => r.id === rewardId);
-    if (!reward) return { success: false, error: "Reward not found." };
-
-    if (loyalty.balance < reward.pointsCost) {
-      return {
-        success: false,
-        error: `Insufficient points! You need ${reward.pointsCost} points but currently have ${loyalty.balance}.`,
-      };
+    if (!rewardId) {
+      throw new Error("Choose a reward to redeem.");
     }
 
-    loyalty.balance -= reward.pointsCost;
-    loyalty.history.unshift({
-      id: "lh-" + Date.now(),
-      type: "redeem",
-      title: `Redeemed: ${reward.name}`,
-      points: -reward.pointsCost,
-      date: "Just now",
+    const data = await apiFetch("/api/rewards/redeem", {
+      method: "POST",
+      body: JSON.stringify({ rewardId }),
     });
 
-    localStorage.setItem(STORE_KEYS.LOYALTY, JSON.stringify(loyalty));
-
-    await pushNotification({
-      title: "Reward Redeemed!",
-      message: `You claimed "${reward.name}". Use voucher code "${reward.code}" on checkout.`,
-      type: "promo",
-    });
-
-    return { success: true, reward, remainingBalance: loyalty.balance };
-  }
-
-  /**
-   * API-Swappable Stub for: GET /api/notifications
-   */
-  async function fetchNotifications() {
-    initDataStores();
-    return JSON.parse(localStorage.getItem(STORE_KEYS.NOTIFICATIONS) || "[]");
-  }
-
-  /**
-   * API-Swappable Stub for: POST /api/notifications
-   */
-  async function pushNotification(notif) {
-    initDataStores();
-    const notifs = JSON.parse(
-      localStorage.getItem(STORE_KEYS.NOTIFICATIONS) || "[]"
-    );
-    const newNotif = {
-      id: "notif-" + Date.now(),
-      title: notif.title,
-      message: notif.message,
-      type: notif.type || "info",
-      time: "Just now",
-      read: false,
+    return {
+      success: true,
+      reward: data.reward,
+      remainingBalance: Number(data.remainingBalance || 0),
     };
-    notifs.unshift(newNotif);
-    localStorage.setItem(STORE_KEYS.NOTIFICATIONS, JSON.stringify(notifs));
-    return newNotif;
   }
 
-  /**
-   * API-Swappable Stub for: POST /api/notifications/mark-read
-   */
+  async function fetchNotifications() {
+    const data = await apiFetch("/api/notifications");
+    return Array.isArray(data.notifications) ? data.notifications : [];
+  }
+
+  async function pushNotification(notif) {
+    if (!notif || !notif.title) {
+      throw new Error("Notification title is required.");
+    }
+
+    const data = await apiFetch("/api/notifications", {
+      method: "POST",
+      body: JSON.stringify(notif),
+    });
+
+    return data.notification;
+  }
+
   async function markAllNotificationsRead() {
-    initDataStores();
-    const notifs = JSON.parse(
-      localStorage.getItem(STORE_KEYS.NOTIFICATIONS) || "[]"
-    );
-    notifs.forEach(n => (n.read = true));
-    localStorage.setItem(STORE_KEYS.NOTIFICATIONS, JSON.stringify(notifs));
-    return notifs;
+    const data = await apiFetch("/api/notifications/read-all", {
+      method: "PATCH",
+    });
+
+    return Array.isArray(data.notifications) ? data.notifications : [];
+  }
+
+  async function updateProfile(profile) {
+    const data = await apiFetch("/api/profile", {
+      method: "PATCH",
+      body: JSON.stringify(profile),
+    });
+
+    return data.user;
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    return apiFetch("/api/profile/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
+  /** ERD stores a single CUSTOMER.default_address. */
+  async function updateAddress(address) {
+    const data = await apiFetch("/api/profile/address", {
+      method: "PATCH",
+      body: JSON.stringify({ address }),
+    });
+
+    return data.address;
   }
 
   /**
    * API-Swappable Stub for: POST /api/stations/toggle-save
+   *
+   * Saved stations have no ERD table, so this remains device-local by design.
    */
   function toggleSavedStation(stationId) {
     initDataStores();
@@ -1417,6 +1240,9 @@
     fetchNotifications,
     pushNotification,
     markAllNotificationsRead,
+    updateProfile,
+    changePassword,
+    updateAddress,
     toggleSavedStation,
     getSavedStations,
     initDataStores,

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sendSystemEmail } from "../../../emailService.js";
 import {
   clearSessionCookie,
   parseCookies,
@@ -348,6 +349,13 @@ router.post("/auth/:role/:mode", async (req, res) => {
       return res.redirect(
         `/auth/${role}/register?error=${encodeURIComponent(result.error)}`
       );
+    const emailSent = await sendSystemEmail(
+      req.body.email,
+      "Welcome to AquaTracker!",
+      "<h1>Welcome!</h1><p>Your account is ready.</p>"
+    );
+    if (emailSent === false)
+      console.warn("User registered, but welcome email failed to send.");
     if (role === "staff")
       return res.redirect("/auth/staff/login?notice=staff-pending");
     const token = await createSession(result.user);

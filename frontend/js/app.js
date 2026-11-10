@@ -35,13 +35,13 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
     ["Alka Water Refilling Station", "Zone 11, Alta Tierra Subdivision, Tiguma", "Hours not publicly listed", "0938 686 3252", "Contact station", "Verified listing"],
   ];
   const stationCoordinates = [
-    [7.8269, 123.4371],
-    [7.8312, 123.4437],
-    [7.8347, 123.4481],
-    [7.8198, 123.4297],
-    [7.8191, 123.4412],
-    [7.8362, 123.4264],
-    [7.8127, 123.4512],
+    [7.827330, 123.444185],
+    [7.831200, 123.443700],
+    [7.834700, 123.448100],
+    [7.819800, 123.429700],
+    [7.819100, 123.441200],
+    [7.836200, 123.426400],
+    [7.840580, 123.463360],
   ];
   const orders = [["AT-1048", "Mia Santos", "2 × 5-gallon refill", "₱70.00", "Ready for pickup", "teal"], ["AT-1047", "Noah Garcia", "1 × 5-gallon refill", "₱35.00", "Processing", "orange"], ["AT-1046", "Lia Mendoza", "Monthly · 4 gallons", "₱120.00", "Completed", "slate"], ["AT-1045", "Enzo Reyes", "3 × 5-gallon refill", "₱105.00", "New order", "blue"]];
   const sectionData = {
@@ -73,7 +73,7 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
     const nav = role === "owner" ? [["Overview", ""], ["Orders", "orders"], ["Subscriptions", "subscriptions"], ["Customers", "customers"], ["Staff approvals", "staff-approvals"], ["Promotions", "promotions"], ["Station settings", "station-settings"], ["Profile", "profile"]] : role === "staff" ? [["Overview", ""], ["My shifts", "my-shifts"], ["Station orders", "station-orders"], ["Inventory", "inventory"], ["Customer requests", "customer-requests"], ["Staff profile", "profile"]] : [["Overview", ""], ["Find stations", "find-stations"], ["Order water", "order-water"], ["My subscriptions", "my-subscriptions"], ["Orders & history", "orders-history"], ["Rewards", "rewards"], ["Profile", "profile"]];
     const navHtml = nav.map(([label, path]) => `<a class="${active === label ? "active" : ""}" href="${path ? `/dashboard/${role}/${path}` : `/dashboard/${role}`}"><span>•</span>${label}</a>`).join("");
     const initials = initialsFor(account.name);
-    return `<div class="app-shell"><aside class="sidebar"><a class="mark mark-compact" href="/"><img src="/images/logo/aquatracker-icon-teal-light.png" alt="AquaTracker logo" class="mark-icon-img"><span>Aqua<span class="mark-accent">Tracker</span></span></a><div class="account-chip"><span class="avatar">${initials}</span><span><strong>${esc(account.name)}</strong><small>${esc(account.label)}</small></span></div><nav class="side-nav">${navHtml}</nav><a class="signout" href="/auth/logout">↪ Sign out</a></aside><section class="workspace"><header class="topbar"><div class="mobile-menu"><button data-menu-toggle>☰</button></div><div><small>${esc(account.label)} workspace</small><h1>${esc(title)}</h1></div><div class="top-actions"><button class="icon-button" data-notifications aria-label="Open notifications"><svg class="bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button><span class="top-account"><strong>${esc(account.name)}</strong><small>${esc(account.subtitle)}</small></span><span class="avatar pale">${initials}</span></div></header><main class="content">${content}</main></section></div><div class="notification-panel" data-notification-panel><strong>Notifications</strong><p>Your latest AquaTracker updates will appear here.</p><button data-close-notifications>Mark all read</button></div>`;
+    return `<div class="app-shell"><aside class="sidebar"><a class="mark mark-compact" href="/"><img src="/assets/logo/aquatracker-icon-teal-light.png" alt="AquaTracker logo" class="mark-icon-img"><span>Aqua<span class="mark-accent">Tracker</span></span></a><div class="account-chip"><span class="avatar">${initials}</span><span><strong>${esc(account.name)}</strong><small>${esc(account.label)}</small></span></div><nav class="side-nav">${navHtml}</nav><a class="signout" href="/auth/logout">↪ Sign out</a></aside><section class="workspace"><header class="topbar"><div class="mobile-menu"><button data-menu-toggle>☰</button></div><div><small>${esc(account.label)} workspace</small><h1>${esc(title)}</h1></div><div class="top-actions"><button class="icon-button" data-notifications aria-label="Open notifications"><svg class="bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button><span class="top-account"><strong>${esc(account.name)}</strong><small>${esc(account.subtitle)}</small></span><span class="avatar pale">${initials}</span></div></header><main class="content">${content}</main></section></div><div class="notification-panel" data-notification-panel><strong>Notifications</strong><p>Your latest AquaTracker updates will appear here.</p><button data-close-notifications>Mark all read</button></div>`;
   }
   function stats(items) { return `<div class="stats three">${items.map((item) => `<div><b>${esc(item[0])}</b><small>${esc(item[1])}<br>${esc(item[2])}</small></div>`).join("")}</div>`; }
   function stationRows() {
@@ -446,11 +446,13 @@ async function staffSection(role, key) {
     form.action = `/auth/${role}/${mode}`;
     form.dataset.role = role; form.dataset.mode = mode;
     $("[data-name-field]").style.display = mode === "register" ? "grid" : "none";
+    $("[data-phone-field]").style.display = mode === "register" ? "grid" : "none";
     $("[data-station-field]").style.display = mode === "register" && role !== "customer" ? "grid" : "none";
     $("[data-confirm-field]").style.display = mode === "register" ? "grid" : "none";
     $("[data-remember-field]").style.display = mode === "login" ? "flex" : "none";
     $("[data-auth-submit]").textContent = mode === "register" ? "Create account →" : "Sign in →";
     form.elements.name.required = mode === "register";
+    form.elements.phone.required = false;
     form.elements.confirmPassword.required = mode === "register";
     form.elements.station.required = mode === "register" && role !== "customer";
     $("[data-form-switch-label]").textContent = mode === "register" ? "Already have an account?" : "New to AquaTracker?";
@@ -459,8 +461,7 @@ async function staffSection(role, key) {
     $("[data-demo-email]").textContent = `${account.email} · click to fill`;
     $("[data-demo-fill]").style.display = mode === "login" ? "grid" : "none";
     $("[data-demo-fill]").addEventListener("click", () => { form.elements.email.value = account.email; form.elements.password.value = account.password; });
-    $("[data-toggle-password]")?.addEventListener("click", (event) => { const input = form.elements.password; input.type = input.type === "password" ? "text" : "password"; event.target.textContent = input.type === "password" ? "Show" : "Hide"; });
-    form.addEventListener("submit", (event) => {
+    form.addEventListener("submit", async (event) => {
       if (mode !== "register") return;
       if (form.elements.password.value.length < 8) {
         event.preventDefault();
@@ -470,6 +471,31 @@ async function staffSection(role, key) {
         event.preventDefault();
         message.hidden = false;
         message.textContent = "Passwords must match.";
+      } else {
+        event.preventDefault();
+        const payload = Object.fromEntries(new FormData(form).entries());
+        payload.phone = form.elements.phone.value.trim() || null;
+        const submitButton = $("[data-auth-submit]");
+        submitButton.disabled = true;
+        try {
+          const response = await fetch(form.action, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", Accept: "text/html, application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (response.redirected) {
+            window.location.assign(response.url);
+            return;
+          }
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || "Account creation failed.");
+          window.location.assign(result.redirectUrl || "/");
+        } catch (error) {
+          message.hidden = false;
+          message.textContent = error.message || "Account creation failed. Please try again.";
+          submitButton.disabled = false;
+        }
       }
     });
   }

@@ -256,7 +256,7 @@
         pickupAvailable: true,
         minOrderGallons: 1,
         tag: "Best Value - Verified",
-        coords: { lat: 7.8269, lng: 123.4371 },
+        coords: { lat: 7.827330, lng: 123.444185 },
       },
       {
         id: "ultra-pure",
@@ -273,7 +273,7 @@
         pickupAvailable: true,
         minOrderGallons: 1,
         tag: "Lowest Price",
-        coords: { lat: 7.8312, lng: 123.4437 },
+        coords: { lat: 7.831200, lng: 123.443700 },
       },
       {
         id: "waterpol",
@@ -290,7 +290,7 @@
         pickupAvailable: true,
         minOrderGallons: 2,
         tag: "Fast Delivery",
-        coords: { lat: 7.8347, lng: 123.4481 },
+        coords: { lat: 7.834700, lng: 123.448100 },
       },
     ]);
 

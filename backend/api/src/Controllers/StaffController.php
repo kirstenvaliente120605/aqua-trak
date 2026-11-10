@@ -1,8 +1,11 @@
 <?php
 /**
- * Station staff workspace: order queue, shifts, inventory, customer requests
- * and notifications. Every query is scoped to the signed-in staff member's
- * assigned station, mirroring stationFor() in staffStore.js.
+ * Station-staff workspace backed by the ERD schema.
+ *
+ * Orders and inventory are the shared ERD rows, scoped to the staff member's
+ * STAFF.station_id. The ERD has no shift, customer-request or inventory-report
+ * tables, so those read-only demo sections remain in the frontend's local
+ * prototype store while every action button writes to the database.
  */
 
 declare(strict_types=1);
@@ -11,110 +14,155 @@ namespace AquaTracker;
 
 final class StaffController
 {
-    /** Staff with no stationId fall back to the demo station, as in Node. */
-    private static function stationFor(array $user): string
+    private const ACTIVE_STATUSES = ['new', 'pending', 'confirmed', 'preparing', 'ready_for_pickup', 'out-for-delivery'];
+    private const INVENTORY_TYPES = ['caps', 'seals', 'bottles'];
+    private const REORDER_AT = ['caps' => 30, 'seals' => 15, 'bottles' => 4];
+
+    private static function stationId(array $user): string
     {
-        $station = trim((string) ($user['stationId'] ?? ''));
-        return $station !== '' ? $station : 'drink-refill';
+        $userId = (string) ($user['id'] ?? '');
+
+        if ($userId !== '') {
+            $station = Database::scalar(
+                'SELECT station_id FROM staff WHERE user_id = ? ORDER BY id ASC LIMIT 1',
+                [$userId]
+            );
+            if ($station !== null && (string) $station !== '') {
+                return (string) $station;
+            }
+
+            $sessionStation = trim((string) ($user['stationId'] ?? ''));
+            if ($sessionStation !== '') {
+                return $sessionStation;
+            }
+
+            $name = trim((string) ($user['station'] ?? ''));
+            if ($name !== '') {
+                $byName = Database::scalar('SELECT id FROM station WHERE name = ? LIMIT 1', [$name]);
+                if ($byName !== null) {
+                    return (string) $byName;
+                }
+            }
+        }
+
+        return (string) (Database::scalar('SELECT id FROM station ORDER BY id ASC LIMIT 1') ?? '');
+    }
+
+    private static function stationName(string $stationId): string
+    {
+        $name = Database::scalar('SELECT name FROM station WHERE id = ? LIMIT 1', [$stationId]);
+        return $name === null ? 'Assigned station' : (string) $name;
     }
 
     // -- overview ------------------------------------------------------------
 
     public static function overview(RouteContext $ctx): never
     {
-        $stationId = self::stationFor($ctx->user);
+        $stationId = self::stationId($ctx->user);
+        $orders = self::ordersForStation($stationId);
+        $inventory = self::inventoryForStation($stationId);
 
-        $orders   = CommerceController::ordersForStation($stationId);
-        $shifts   = self::listShifts($stationId, (string) $ctx->user['id']);
-        $inventory = self::listInventory($stationId);
-        $requests = self::listRequests($stationId);
-
-        $active  = ['New', 'Confirmed', 'Preparing', 'Ready for Pickup', 'Out for Delivery'];
         $pending = array_values(array_filter(
             $orders,
-            static fn (array $o): bool => in_array($o['status'], $active, true)
+            static fn (array $order): bool => in_array(strtolower((string) $order['status']), self::ACTIVE_STATUSES, true)
         ));
 
-        $alerts = array_values(array_map(
-            static fn (array $i): array => [
-                'id'     => $i['id'],
-                'label'  => $i['name'] . ' is low',
-                'detail' => sprintf('%d %s remaining · reorder at %d', $i['quantity'], $i['unit'], $i['reorderAt']),
-            ],
-            array_filter($inventory, static fn (array $i): bool => $i['quantity'] <= $i['reorderAt'])
-        ));
+        $alerts = [];
+        foreach ($inventory as $type => $item) {
+            if ($item['quantity'] <= $item['reorderAt']) {
+                $alerts[] = [
+                    'id' => $item['id'],
+                    'label' => $item['name'] . ' is low',
+                    'detail' => sprintf('%d %s remaining - reorder at %d', $item['quantity'], $item['unit'], $item['reorderAt']),
+                ];
+            }
+        }
 
         $completed = array_slice(array_values(array_filter(
             $orders,
-            static fn (array $o): bool => $o['status'] === 'Delivered'
+            static fn (array $order): bool => strtolower((string) $order['status']) === 'completed'
         )), 0, 5);
 
-        $today       = Dates::today();
-        $currentFor  = array_values(array_filter(
-            $shifts,
-            static fn (array $s): bool => $s['date'] === $today
-        ));
-        $currentShift = $currentFor[0] ?? ($shifts[0] ?? null);
-
         Response::json([
-            'stationId'     => $stationId,
-            'stationName'   => (string) ($ctx->user['station'] ?: 'Assigned station'),
-            'metrics'       => [
+            'stationId' => $stationId,
+            'stationName' => self::stationName($stationId),
+            'metrics' => [
                 'assignedOrders' => count($pending),
-                'ready'          => count(array_filter($orders, static fn (array $o): bool => $o['status'] === 'Ready for Pickup')),
-                'openRequests'   => count(array_filter($requests, static fn (array $r): bool => !in_array($r['status'], ['Resolved', 'Closed'], true))),
-                'lowStock'       => count($alerts),
+                'ready' => count(array_filter(
+                    $orders,
+                    static fn (array $order): bool => strtolower((string) $order['status']) === 'ready_for_pickup'
+                )),
+                'openRequests' => 0,
+                'lowStock' => count($alerts),
             ],
-            'orders'         => array_slice($orders, 0, 5),
-            'pendingOrders'  => array_slice($pending, 0, 5),
-            'completedTasks' => array_map(
-                static fn (array $o): array => [
-                    'id'          => $o['id'],
-                    'label'       => sprintf('Order %s delivered', $o['id']),
-                    'detail'      => sprintf('%s · %d gallons', $o['customerName'], $o['gallons']),
-                    'completedAt' => $o['updatedAt'] ?? $o['createdAt'],
-                ],
-                $completed
-            ),
+            'orders' => array_slice($orders, 0, 5),
+            'pendingOrders' => array_slice($pending, 0, 5),
+            'completedTasks' => array_map(static fn (array $order): array => [
+                'id' => $order['id'],
+                'label' => sprintf('Order %s completed', $order['id']),
+                'detail' => sprintf('%s - %d gallons', $order['customerName'], $order['gallons']),
+                'completedAt' => $order['createdAt'],
+            ], $completed),
             'inventoryAlerts' => $alerts,
-            'currentShift'    => $currentShift,
-            'nextShift'       => $shifts[0] ?? null,
-            'notifications'   => self::listNotifications($stationId),
+            'currentShift' => null,
+            'nextShift' => null,
+            'notifications' => self::notificationsFor((string) $ctx->user['id']),
         ]);
     }
 
     // -- orders --------------------------------------------------------------
 
+    /** @return list<array<string,mixed>> */
+    private static function ordersForStation(string $stationId): array
+    {
+        $rows = Database::all(
+            'SELECT o.*, c.user_id AS customer_user_id,
+                    COALESCE(u.full_name, u.name, "") AS customer_name
+             FROM `ORDER` o
+             LEFT JOIN customer c ON c.id = o.customer_id
+             LEFT JOIN user u ON u.id = c.user_id
+             WHERE o.station_id = ?
+             ORDER BY o.created_at DESC, o.id DESC',
+            [$stationId]
+        );
+
+        $stationName = self::stationName($stationId);
+        return array_map(
+            static fn (array $row): array => self::shapeOrder($row, $stationName),
+            $rows
+        );
+    }
+
     public static function listOrders(RouteContext $ctx): never
     {
-        $stationId = self::stationFor($ctx->user);
-        $orders    = CommerceController::ordersForStation($stationId);
+        $orders = self::ordersForStation(self::stationId($ctx->user));
 
-        $status = trim((string) $ctx->input('status', ''));
+        $status = strtolower(trim((string) $ctx->input('status', '')));
         $search = strtolower(trim((string) $ctx->input('search', '')));
 
         if ($status !== '' && $status !== 'all') {
             $orders = array_values(array_filter(
                 $orders,
-                static fn (array $o): bool => $o['status'] === $status
+                static fn (array $order): bool => strtolower((string) $order['status']) === $status
             ));
         }
 
         if ($search !== '') {
-            $orders = array_values(array_filter($orders, static function (array $o) use ($search): bool {
+            $orders = array_values(array_filter($orders, static function (array $order) use ($search): bool {
                 $haystack = strtolower(implode(' ', [
-                    (string) $o['id'],
-                    (string) $o['customerName'],
-                    (string) $o['stationName'],
+                    (string) $order['id'],
+                    (string) $order['customerName'],
+                    (string) $order['stationName'],
                 ]));
                 return str_contains($haystack, $search);
             }));
         }
 
         Response::json([
-            'stationId' => $stationId,
-            'statuses'  => AQ_ORDER_STATUSES,
-            'orders'    => $orders,
+            'stationId' => self::stationId($ctx->user),
+            'stationName' => self::stationName(self::stationId($ctx->user)),
+            'statuses' => self::ACTIVE_STATUSES,
+            'orders' => $orders,
         ]);
     }
 
@@ -126,331 +174,300 @@ final class StaffController
 
     public static function updateOrder(RouteContext $ctx): never
     {
-        $stationId = self::stationFor($ctx->user);
-        $order     = self::findOrder($ctx);
-
-        $status = trim((string) $ctx->input('status', ''));
-        $note   = $ctx->input('internalNote');
-
-        if ($status !== '' && !in_array($status, AQ_ORDER_STATUSES, true)) {
-            Response::fail('Order is not assigned to your station or the update is invalid.', 400);
-        }
+        $stationId = self::stationId($ctx->user);
+        $order = self::findOrder($ctx);
 
         $fields = [];
         $values = [];
+        $meta = self::orderMeta($order['id']);
 
+        $status = trim((string) $ctx->input('status', ''));
         if ($status !== '') {
             $fields[] = 'status = ?';
-            $values[] = $status;
+            $values[] = self::normalizeStatus($status, (string) $order['fulfillment']);
         }
+
+        $paymentStatus = trim((string) $ctx->input('paymentStatus', ''));
+        if ($paymentStatus !== '') {
+            if (!in_array($paymentStatus, ['paid', 'unpaid', 'refunded'], true)) {
+                Response::fail('Unsupported payment status.', 400);
+            }
+            $meta['paymentStatus'] = $paymentStatus;
+        }
+
+        $note = $ctx->input('internalNote');
         if (is_string($note)) {
-            $fields[] = 'internal_note = ?';
-            $values[] = mb_substr(trim($note), 0, 1000);
+            $meta['internalNote'] = mb_substr(trim($note), 0, 1000);
         }
 
-        if ($fields !== []) {
-            $fields[] = 'updated_at = ?';
-            $values[] = Dates::now();
-            $values[] = $order['id'];
-            $values[] = $stationId;
-
-            Database::run(
-                'UPDATE orders SET ' . implode(', ', $fields) . ' WHERE id = ? AND station_id = ?',
-                $values
-            );
+        if ($fields === [] && $meta === self::orderMeta($order['id'])) {
+            Response::fail('Nothing to update.', 400);
         }
 
-        $row = (array) Database::one(
-            'SELECT * FROM orders WHERE id = ? AND station_id = ? LIMIT 1',
-            [$order['id'], $stationId]
+        $fields[] = 'meta = ?';
+        $values[] = json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $values[] = $order['id'];
+        $values[] = $stationId;
+
+        Database::run(
+            'UPDATE `ORDER` SET ' . implode(', ', $fields) . ' WHERE id = ? AND station_id = ?',
+            $values
         );
 
-        Response::json(['order' => CommerceController::shapeOrderForStation(
-            $row,
-            CommerceController::stationIndex()
-        )]);
+        $fresh = Database::one('SELECT * FROM `ORDER` WHERE id = ? LIMIT 1', [$order['id']]);
+        Response::json([
+            'success' => true,
+            'order' => self::shapeOrder((array) $fresh, self::stationName($stationId)),
+        ]);
     }
 
     /** @return array<string,mixed> */
     private static function findOrder(RouteContext $ctx): array
     {
+        $stationId = self::stationId($ctx->user);
         $row = Database::one(
-            'SELECT * FROM orders WHERE id = ? AND station_id = ? LIMIT 1',
-            [$ctx->param('id'), self::stationFor($ctx->user)]
+            'SELECT o.*, c.user_id AS customer_user_id,
+                    COALESCE(u.full_name, u.name, "") AS customer_name
+             FROM `ORDER` o
+             LEFT JOIN customer c ON c.id = o.customer_id
+             LEFT JOIN user u ON u.id = c.user_id
+             WHERE o.id = ? AND o.station_id = ? LIMIT 1',
+            [$ctx->param('id'), $stationId]
         );
-
         if ($row === null) {
             Response::fail('Order not found for your assigned station.', 404);
         }
 
-        return CommerceController::shapeOrderForStation($row, CommerceController::stationIndex());
+        return self::shapeOrder($row, self::stationName($stationId));
     }
 
-    // -- shifts --------------------------------------------------------------
-
-    /** @return list<array<string,mixed>> */
-    public static function listShifts(string $stationId, string $staffId): array
+    /** @return array<string,mixed> */
+    private static function orderMeta(string $orderId): array
     {
-        self::seedShiftsIfEmpty($stationId, $staffId);
-
-        $rows = Database::all(
-            'SELECT * FROM staff_shifts WHERE staff_id = ? AND station_id = ? ORDER BY date ASC, start ASC',
-            [$staffId, $stationId]
-        );
-
-        return array_map([self::class, 'shapeShift'], $rows);
+        $meta = Database::scalar('SELECT meta FROM `ORDER` WHERE id = ? LIMIT 1', [$orderId]);
+        $decoded = json_decode((string) ($meta ?? '{}'), true);
+        return is_array($decoded) ? $decoded : [];
     }
 
-    /**
-     * Gives a brand new staff account a starting rota so the shift workspace is
-     * not empty on first login, matching seedShifts() in staffStore.js.
-     */
-    private static function seedShiftsIfEmpty(string $stationId, string $staffId): void
+    private static function normalizeStatus(string $status, string $fulfillment): string
     {
-        $exists = Database::scalar(
-            'SELECT COUNT(*) FROM staff_shifts WHERE staff_id = ?',
-            [$staffId]
-        );
+        $key = strtolower(trim($status));
+        $map = [
+            'new order' => 'new',
+            'new' => 'new',
+            'pending' => 'pending',
+            'confirmed' => 'confirmed',
+            'preparing' => $fulfillment === 'pickup' ? 'preparing' : 'confirmed',
+            'ready for pickup' => 'ready_for_pickup',
+            'ready' => 'ready_for_pickup',
+            'ready_for_pickup' => 'ready_for_pickup',
+            'out for delivery' => 'out-for-delivery',
+            'out-for-delivery' => 'out-for-delivery',
+            'delivered' => 'completed',
+            'complete' => 'completed',
+            'completed' => 'completed',
+            'cancelled' => 'cancelled',
+            'canceled' => 'cancelled',
+        ];
 
-        if ((int) $exists > 0) {
-            return;
+        $value = $map[$key] ?? $key;
+        $allowed = array_merge(self::ACTIVE_STATUSES, ['completed', 'cancelled']);
+        if (!in_array($value, $allowed, true)) {
+            Response::fail('Unsupported order status.', 400);
         }
 
-        Database::run(
-            'INSERT INTO staff_shifts (id, staff_id, station_id, date, start, end, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [Database::uuid(), $staffId, $stationId, Dates::today(), '14:00', '21:00', 'Scheduled']
-        );
-        Database::run(
-            'INSERT INTO staff_shifts (id, staff_id, station_id, date, start, end, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [Database::uuid(), $staffId, $stationId, date('Y-m-d', strtotime('+1 day')), '08:00', '16:00', 'Scheduled']
-        );
+        return $value;
     }
 
-    public static function listMyShifts(RouteContext $ctx): never
+    /** @param array<string,mixed> $row */
+    private static function shapeOrder(array $row, string $stationName): array
     {
-        Response::json(['shifts' => self::listShifts(
-            self::stationFor($ctx->user),
-            (string) $ctx->user['id']
-        )]);
-    }
-
-    public static function attendance(RouteContext $ctx): never
-    {
-        $action = trim((string) $ctx->input('action', ''));
-        if (!in_array($action, ['check-in', 'check-out'], true)) {
-            Response::fail('Attendance action is not available for this shift.', 400);
+        $meta = json_decode((string) ($row['meta'] ?? '{}'), true);
+        if (!is_array($meta)) {
+            $meta = [];
         }
 
-        $stationId = self::stationFor($ctx->user);
-        $row       = Database::one(
-            'SELECT * FROM staff_shifts WHERE id = ? AND staff_id = ? AND station_id = ? LIMIT 1',
-            [$ctx->param('id'), (string) $ctx->user['id'], $stationId]
+        $items = Database::all(
+            'SELECT oi.qty, oi.unit_price, p.name, p.type
+             FROM order_item oi
+             LEFT JOIN product p ON p.id = oi.product_id
+             WHERE oi.order_id = ?',
+            [$row['id']]
         );
+        $shapedItems = array_map(static fn (array $item): array => [
+            'productId' => null,
+            'type' => (string) ($item['type'] ?? 'refill'),
+            'label' => (string) ($item['name'] ?? 'Refill'),
+            'count' => (int) $item['qty'],
+            'unitPrice' => (float) $item['unit_price'],
+        ], $items);
 
-        if ($row === null) {
-            Response::fail('Attendance action is not available for this shift.', 400);
+        $gallons = array_sum(array_column($shapedItems, 'count'));
+        if ($gallons === 0) {
+            $gallons = (int) ($meta['gallonsTotal'] ?? 0);
         }
 
-        $attendance = json_decode((string) ($row['attendance'] ?? '{}'), true);
-        if (!is_array($attendance)) {
-            $attendance = [];
+        $customerName = trim((string) ($row['customer_name'] ?? ''));
+        if ($customerName === '') {
+            $customerName = (string) ($meta['customerName'] ?? 'Customer');
         }
-        $attendance[$action] = Dates::iso(Dates::now());
-
-        Database::run(
-            'UPDATE staff_shifts SET attendance = ?, status = ? WHERE id = ?',
-            [
-                json_encode($attendance, JSON_UNESCAPED_SLASHES),
-                $action === 'check-in' ? 'In progress' : 'Completed',
-                $row['id'],
-            ]
-        );
-
-        $row = (array) Database::one('SELECT * FROM staff_shifts WHERE id = ?', [$row['id']]);
-        Response::json(['shift' => self::shapeShift($row)]);
-    }
-
-    /**
-     * @param array<string,mixed> $row
-     * @return array<string,mixed>
-     */
-    private static function shapeShift(array $row): array
-    {
-        $attendance = json_decode((string) ($row['attendance'] ?? 'null'), true);
 
         return [
-            'id'         => $row['id'],
-            'staffId'    => $row['staff_id'],
-            'stationId'  => $row['station_id'],
-            'date'       => Dates::iso($row['date'] ?? null),
-            'start'      => (string) $row['start'],
-            'end'        => (string) $row['end'],
-            'status'     => (string) $row['status'],
-            'attendance' => is_array($attendance) ? $attendance : null,
+            'id' => $row['id'],
+            'customerId' => $row['customer_id'],
+            'userId' => $row['customer_user_id'] ?? null,
+            'customerName' => $customerName,
+            'stationId' => $row['station_id'],
+            'stationName' => $meta['stationName'] ?? $stationName,
+            'items' => $shapedItems,
+            'gallons' => $gallons,
+            'fulfillment' => $row['type'],
+            'status' => (string) $row['status'],
+            'total' => (float) $row['total'],
+            'paymentMethod' => (string) ($meta['paymentMethod'] ?? 'cod'),
+            'paymentStatus' => (string) ($meta['paymentStatus'] ?? 'paid'),
+            'contactPhone' => (string) ($meta['contactPhone'] ?? ''),
+            'notes' => (string) ($meta['notes'] ?? ''),
+            'deliveryAddress' => (string) ($meta['deliveryAddress'] ?? ''),
+            'createdAt' => Dates::iso($row['created_at']),
         ];
     }
 
     // -- inventory -----------------------------------------------------------
 
     /** @return list<array<string,mixed>> */
-    public static function listInventory(string $stationId): array
+    private static function inventoryForStation(string $stationId): array
     {
+        $in = implode(',', array_fill(0, count(self::INVENTORY_TYPES), '?'));
         $rows = Database::all(
-            'SELECT * FROM inventory_items WHERE station_id = "" OR station_id = ? ORDER BY name ASC',
-            [$stationId]
+            "SELECT * FROM product WHERE station_id = ? AND type IN ($in) ORDER BY type ASC",
+            array_merge([$stationId], self::INVENTORY_TYPES)
         );
 
-        return array_map(static fn (array $r): array => [
-            'id'        => $r['id'],
-            'name'      => $r['name'],
-            'quantity'  => (int) $r['quantity'],
-            'reorderAt' => (int) $r['reorder_at'],
-            'unit'      => (string) $r['unit'],
-        ], $rows);
+        $byType = [];
+        foreach ($rows as $row) {
+            $byType[(string) $row['type']] = $row;
+        }
+
+        $items = [];
+        foreach (self::INVENTORY_TYPES as $type) {
+            $row = $byType[$type] ?? null;
+            $items[] = [
+                'id' => $row['id'] ?? null,
+                'type' => $type,
+                'name' => (string) ($row['name'] ?? self::productLabel($type)),
+                'quantity' => (int) ($row['stock_qty'] ?? 0),
+                'reorderAt' => self::REORDER_AT[$type],
+                'unit' => (string) ($row['unit'] ?? $type),
+            ];
+        }
+
+        return $items;
+    }
+
+    private static function productLabel(string $type): string
+    {
+        $labels = [
+            'caps' => 'Sanitary caps',
+            'seals' => 'Bottle seals',
+            'bottles' => 'Refill bottles',
+        ];
+        return $labels[$type] ?? ucwords(str_replace(['-', '_'], ' ', $type));
     }
 
     public static function showInventory(RouteContext $ctx): never
     {
-        Response::json(['inventory' => self::listInventory(self::stationFor($ctx->user))]);
+        $items = self::inventoryForStation(self::stationId($ctx->user));
+        $map = [];
+        foreach ($items as $item) {
+            $map[$item['type']] = $item['quantity'];
+        }
+
+        Response::json(['inventory' => $items, 'map' => $map]);
     }
 
     public static function reportInventory(RouteContext $ctx): never
     {
-        $stationId = self::stationFor($ctx->user);
-        $itemId    = (string) $ctx->input('itemId', '');
-        $type      = (string) $ctx->input('type', 'missing');
-        $type      = in_array($type, ['return', 'damage', 'missing'], true) ? $type : 'missing';
-
-        $amount = (int) $ctx->input('amount', 1);
-        $amount = max(1, min(1000, $amount));
-
-        $item = Database::one(
-            'SELECT * FROM inventory_items WHERE id = ? AND (station_id = "" OR station_id = ?) LIMIT 1',
-            [$itemId, $stationId]
-        );
-
-        if ($item === null) {
-            Response::fail('Inventory item not found for your assigned station.', 400);
+        $stationId = self::stationId($ctx->user);
+        $type = trim((string) $ctx->input('item', $ctx->input('itemType', $ctx->input('type', ''))));
+        if (!in_array($type, self::INVENTORY_TYPES, true)) {
+            Response::fail('Choose a valid inventory item.', 400);
         }
 
-        Database::run(
-            'INSERT INTO inventory_reports (id, item_id, staff_id, type, amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [
-                Database::uuid(),
-                $itemId,
-                (string) $ctx->user['id'],
-                $type,
-                $amount,
-                mb_substr(trim((string) $ctx->input('note', '')), 0, 500),
-                Dates::now(),
-            ]
+        $amount = (int) $ctx->input('amount', 1);
+        $amount = max(-10000, min(10000, $amount));
+
+        $product = Database::one(
+            'SELECT * FROM product WHERE station_id = ? AND type = ? LIMIT 1',
+            [$stationId, $type]
         );
+        if ($product === null) {
+            $productId = mb_substr($stationId . ':' . $type, 0, 36);
+            Database::run(
+                'INSERT INTO product (id, station_id, name, unit, stock_qty, type)
+                 VALUES (?, ?, ?, ?, 0, ?)',
+                [$productId, $stationId, self::productLabel($type), $type, $type]
+            );
+            $product = Database::one('SELECT * FROM product WHERE id = ? LIMIT 1', [$productId]);
+        }
 
-        // Returns add stock back; damage and missing subtract it.
-        $delta = match ($type) {
-            'return' => $amount,
-            default  => -$amount,
-        };
+        $quantity = max(0, (int) $product['stock_qty'] + $amount);
+        Database::run('UPDATE product SET stock_qty = ? WHERE id = ?', [$quantity, $product['id']]);
 
-        Database::run(
-            'UPDATE inventory_items SET quantity = GREATEST(0, quantity + ?) WHERE id = ?',
-            [$delta, $itemId]
-        );
-
-        $fresh = (array) Database::one('SELECT * FROM inventory_items WHERE id = ?', [$itemId]);
-
-        Response::json(['item' => [
-            'id'        => $fresh['id'],
-            'name'      => $fresh['name'],
-            'quantity'  => (int) $fresh['quantity'],
-            'reorderAt' => (int) $fresh['reorder_at'],
-            'unit'      => (string) $fresh['unit'],
-        ]], 201);
+        Response::json([
+            'success' => true,
+            'item' => [
+                'id' => $product['id'],
+                'type' => $type,
+                'name' => (string) $product['name'],
+                'quantity' => $quantity,
+                'reorderAt' => self::REORDER_AT[$type],
+                'unit' => (string) $product['unit'],
+            ],
+        ]);
     }
 
-    // -- requests ------------------------------------------------------------
+    // -- read-only local prototype sections ---------------------------------
 
-    /** @return list<array<string,mixed>> */
-    public static function listRequests(string $stationId): array
+    public static function listMyShifts(RouteContext $ctx): never
     {
-        $rows = Database::all(
-            'SELECT * FROM customer_requests WHERE station_id = ? ORDER BY created_at DESC',
-            [$stationId]
-        );
+        Response::json(['shifts' => []]);
+    }
 
-        return array_map(static fn (array $r): array => [
-            'id'           => $r['id'],
-            'stationId'    => $r['station_id'],
-            'customerName' => (string) $r['customer_name'],
-            'subject'      => (string) $r['subject'],
-            'message'      => (string) $r['message'],
-            'status'       => (string) $r['status'],
-            'createdAt'    => Dates::iso($r['created_at'] ?? null),
-            'updatedAt'    => Dates::iso($r['updated_at'] ?? null),
-        ], $rows);
+    public static function attendance(RouteContext $ctx): never
+    {
+        Response::fail('Shift attendance is not stored in the ERD schema.', 404);
     }
 
     public static function showRequests(RouteContext $ctx): never
     {
-        Response::json(['requests' => self::listRequests(self::stationFor($ctx->user))]);
+        Response::json(['requests' => []]);
     }
 
     public static function updateRequest(RouteContext $ctx): never
     {
-        $stationId = self::stationFor($ctx->user);
-        $status    = trim((string) $ctx->input('status', ''));
-
-        $row = Database::one(
-            'SELECT * FROM customer_requests WHERE id = ? AND station_id = ? LIMIT 1',
-            [$ctx->param('id'), $stationId]
-        );
-
-        if ($row === null || !in_array($status, ['Open', 'In progress', 'Resolved', 'Closed'], true)) {
-            Response::fail('Request update is invalid.', 400);
-        }
-
-        Database::run(
-            'UPDATE customer_requests SET status = ?, updated_at = ? WHERE id = ?',
-            [$status, Dates::now(), $row['id']]
-        );
-
-        $fresh = (array) Database::one('SELECT * FROM customer_requests WHERE id = ?', [$row['id']]);
-
-        Response::json(['request' => [
-            'id'           => $fresh['id'],
-            'stationId'    => $fresh['station_id'],
-            'customerName' => (string) $fresh['customer_name'],
-            'subject'      => (string) $fresh['subject'],
-            'message'      => (string) $fresh['message'],
-            'status'       => (string) $fresh['status'],
-            'createdAt'    => Dates::iso($fresh['created_at'] ?? null),
-            'updatedAt'    => Dates::iso($fresh['updated_at'] ?? null),
-        ]]);
+        Response::fail('Customer requests are not stored in the ERD schema.', 404);
     }
 
-    // -- notifications -------------------------------------------------------
-
     /** @return list<array<string,mixed>> */
-    public static function listNotifications(string $stationId): array
+    private static function notificationsFor(string $userId): array
     {
         $rows = Database::all(
-            'SELECT * FROM notifications WHERE station_id = ? ORDER BY created_at DESC',
-            [$stationId]
+            'SELECT * FROM notification WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+            [$userId]
         );
-
-        return array_map(static fn (array $r): array => [
-            'id'        => $r['id'],
-            'stationId' => $r['station_id'],
-            'title'     => (string) $r['title'],
-            'message'   => (string) $r['message'],
-            'read'      => (bool) $r['is_read'],
-            'createdAt' => Dates::iso($r['created_at'] ?? null),
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'title' => (string) $row['title'],
+            'message' => (string) $row['body'],
+            'read' => (bool) $row['read'],
+            'createdAt' => Dates::iso($row['created_at']),
         ], $rows);
     }
 
     public static function showNotifications(RouteContext $ctx): never
     {
-        Response::json(['notifications' => self::listNotifications(self::stationFor($ctx->user))]);
+        Response::json(['notifications' => self::notificationsFor((string) $ctx->user['id'])]);
     }
 
     // -- profile -------------------------------------------------------------
@@ -458,9 +475,9 @@ final class StaffController
     public static function updateProfile(RouteContext $ctx): never
     {
         $result = Auth::updateProfile((string) $ctx->user['id'], [
-            'name'     => $ctx->input('name', ''),
-            'email'    => $ctx->input('email', ''),
-            'phone'    => $ctx->input('phone', ''),
+            'name' => $ctx->input('name', ''),
+            'email' => $ctx->input('email', ''),
+            'phone' => $ctx->input('phone', ''),
             'location' => $ctx->input('location', ''),
         ]);
 
