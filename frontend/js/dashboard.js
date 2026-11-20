@@ -86,7 +86,6 @@
         { days: "Saturday", hours: "7:30 AM – 4:00 PM" },
         { days: "Sunday", hours: "Closed" },
       ],
-      phone: "0918 962 5038",
       waterTypes: ["Purified", "Alkaline (+₱10)"],
       deliveryAvailable: true,
       deliveryFee: 15,
@@ -152,7 +151,6 @@
         { days: "Monday – Saturday", hours: "8:00 AM – 6:00 PM" },
         { days: "Sunday", hours: "8:00 AM – 4:00 PM" },
       ],
-      phone: "0970 488 8866",
       waterTypes: ["Purified"],
       deliveryAvailable: false,
       deliveryFee: 0,
@@ -210,7 +208,6 @@
         { days: "Monday – Saturday", hours: "7:00 AM – 6:30 PM" },
         { days: "Sunday", hours: "8:00 AM – 12:00 PM" },
       ],
-      phone: "0927 251 4246",
       waterTypes: ["Purified", "Mineral"],
       deliveryAvailable: true,
       deliveryFee: 15,
@@ -275,7 +272,6 @@
         { days: "Monday – Saturday", hours: "8:00 AM – 5:00 PM" },
         { days: "Sunday", hours: "Closed" },
       ],
-      phone: "0951 312 5308",
       waterTypes: ["Purified"],
       deliveryAvailable: false,
       deliveryFee: 0,
@@ -333,7 +329,6 @@
         { days: "Monday – Friday", hours: "6:30 AM – 7:00 PM" },
         { days: "Saturday – Sunday", hours: "7:00 AM – 6:00 PM" },
       ],
-      phone: "0975 462 7620",
       waterTypes: ["Purified", "Mineral"],
       deliveryAvailable: true,
       deliveryFee: 15,
@@ -399,7 +394,6 @@
         { days: "Counter Service", hours: "Mon–Sun 7:00 AM – 8:00 PM" },
         { days: "Automated Vendo", hours: "24/7 (365 Days / Always Open)" },
       ],
-      phone: "0985 337 4448",
       waterTypes: ["Purified", "Alkaline"],
       deliveryAvailable: true,
       deliveryFee: 20,
@@ -457,7 +451,6 @@
       address: "Zone 11, Alta Tierra Subdivision, Tiguma, Pagadian City",
       pricePerGallon: 35,
       rating: 0,
-      phone: "",
       hours: "",
       deliveryAvailable: true,
       pickupAvailable: true,
@@ -483,7 +476,6 @@
       fulfillment: "delivery",
       deliveryAddress: "Block 4, Lot 12, Sunrise Village, Brgy. San Jose",
       landmark: "Near Yellow Chapel",
-      contactPhone: "+63 917 555 4321",
       paymentMethod: "Cash on Delivery",
       subtotal: 70.0,
       discount: 0.0,
@@ -535,7 +527,6 @@
       fulfillment: "delivery",
       deliveryAddress: "Block 4, Lot 12, Sunrise Village, Brgy. San Jose",
       landmark: "Near Yellow Chapel",
-      contactPhone: "+63 917 555 4321",
       paymentMethod: "Cash on Delivery (COD)",
       subtotal: 150.0,
       discount: 15.0, // 10% volume discount for 6 gallons
@@ -781,15 +772,33 @@
           const local = cached.find(item => item.id === station.id)
             || DEFAULT_STATIONS.find(item => item.id === station.id)
             || {};
+          const deliveryValue = station.deliveryAvailable
+            ?? station.delivery
+            ?? local.deliveryAvailable
+            ?? false;
+          const deliveryAvailable = deliveryValue === true
+            || deliveryValue === 1
+            || deliveryValue === "1";
+          const deliveryFeeValue = Number(
+            station.deliveryFee ?? station.delivery_fee ?? local.deliveryFee
+          );
           return {
             ...local,
             ...station,
             name: station.name || local.name || "Water station",
             address: station.address || local.address || "",
+            hours: station.hours || local.hours || "",
             products: local.products || [],
             schedule: local.schedule || [{ days: "Daily", hours: "Call station" }],
             waterTypes: local.waterTypes || ["Purified"],
-            pricePerGallon: local.pricePerGallon ?? 0,
+            deliveryAvailable,
+            deliveryFee: deliveryAvailable
+              ? Number.isFinite(deliveryFeeValue) && deliveryFeeValue >= 0
+                ? deliveryFeeValue
+                : 15
+              : 0,
+            pricePerGallon:
+              station.pricePerGallon ?? local.pricePerGallon ?? 0,
           };
         });
       }
@@ -811,7 +820,11 @@
           deliveryFee:
             s.deliveryFee !== undefined
               ? s.deliveryFee
-              : defaultMatch.deliveryFee,
+              : defaultMatch.deliveryFee !== undefined
+                ? defaultMatch.deliveryFee
+                : s.deliveryAvailable
+                  ? 15
+                  : 0,
           deliveryCoverage: s.deliveryCoverage || defaultMatch.deliveryCoverage,
           deliveryRadiusKm:
             s.deliveryRadiusKm !== undefined
@@ -949,7 +962,6 @@
         id: newOrder.id,
         userId: orderPayload.userId || "",
         customerName: newOrder.customerName,
-        contactPhone: newOrder.contactPhone,
         stationId: newOrder.stationId,
         stationName: newOrder.stationName,
         stationAddress: newOrder.stationAddress,
@@ -1183,16 +1195,6 @@
     });
   }
 
-  /** ERD stores a single CUSTOMER.default_address. */
-  async function updateAddress(address) {
-    const data = await apiFetch("/api/profile/address", {
-      method: "PATCH",
-      body: JSON.stringify({ address }),
-    });
-
-    return data.address;
-  }
-
   /**
    * API-Swappable Stub for: POST /api/stations/toggle-save
    *
@@ -1242,7 +1244,6 @@
     markAllNotificationsRead,
     updateProfile,
     changePassword,
-    updateAddress,
     toggleSavedStation,
     getSavedStations,
     initDataStores,

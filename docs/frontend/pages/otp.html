@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account security · AquaTracker</title>
+  <link rel="stylesheet" href="/css/styles.css?v=otp-flow">
+</head>
+<body data-page="otp">
+  <div class="auth-page">
+    <section class="auth-aside">
+      <a class="mark mark-compact" href="/">
+        <img src="/assets/logo/aquatracker-icon-teal-light.png" alt="" class="mark-icon-img">
+        <span>Aqua<span class="mark-accent">Tracker</span></span>
+      </a>
+      <div>
+        <span class="pill">Account security</span>
+        <h1>Keep your account yours.</h1>
+        <p>We use one-time codes to protect your AquaTracker account and help you get back in securely.</p>
+      </div>
+      <small>✓ Secure role-based access · © AquaTracker 2026</small>
+    </section>
+    <section class="auth-form">
+      <div class="auth-top auth-top-centered">
+        <a class="auth-brand" href="/"><img src="/assets/logo/aquatracker-lockup-teal.png" alt="AquaTracker" class="brand-lockup"></a>
+        <a href="/">← Back to home</a>
+      </div>
+      <div class="form-wrap otp-wrap">
+        <p class="eyebrow">AquaTracker account</p>
+
+        <section data-otp-view="verify-email" hidden>
+          <h2>Verify your email</h2>
+          <p>Enter the six-digit code sent to <strong data-otp-email></strong>.</p>
+          <form data-code-form>
+            <label>Verification code</label>
+            <div class="otp-input" data-otp-input aria-label="Six-digit verification code"></div>
+            <p class="otp-hint">The code expires in 10 minutes.</p>
+            <p class="otp-error" data-otp-error role="alert" aria-live="polite" hidden></p>
+            <button class="button wide" type="submit" data-code-submit>Verify email</button>
+          </form>
+          <button class="otp-resend" type="button" data-resend>Resend code</button>
+          <p class="otp-countdown" data-countdown aria-live="polite"></p>
+        </section>
+
+        <section data-otp-view="forgot-password" hidden>
+          <h2>Forgot your password?</h2>
+          <p>Enter your account email and we’ll send a password reset code if an account exists.</p>
+          <form data-forgot-form>
+            <label for="forgot-email">Email address</label>
+            <input id="forgot-email" name="email" type="email" autocomplete="email" required>
+            <p class="otp-error" data-forgot-error role="alert" aria-live="polite" hidden></p>
+            <button class="button wide" type="submit" data-forgot-submit>Send reset code</button>
+          </form>
+        </section>
+
+        <section data-otp-view="reset-otp" hidden>
+          <h2>Enter your reset code</h2>
+          <p>Enter the six-digit code sent to <strong data-otp-email></strong>.</p>
+          <form data-code-form>
+            <label>Reset code</label>
+            <div class="otp-input" data-otp-input aria-label="Six-digit password reset code"></div>
+            <p class="otp-hint">The code expires in 10 minutes.</p>
+            <p class="otp-error" data-otp-error role="alert" aria-live="polite" hidden></p>
+            <button class="button wide" type="submit" data-code-submit>Continue</button>
+          </form>
+          <button class="otp-resend" type="button" data-resend>Resend code</button>
+          <p class="otp-countdown" data-countdown aria-live="polite"></p>
+        </section>
+
+        <section data-otp-view="reset-password" hidden>
+          <h2>Create a new password</h2>
+          <p>Choose a password you have not used for this account before.</p>
+          <form data-reset-form>
+            <label for="new-password">New password</label>
+            <div class="otp-password">
+              <input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+              <button type="button" data-password-toggle="new-password" aria-label="Show new password">Show</button>
+            </div>
+            <small class="otp-hint">Use at least 8 characters.</small>
+            <label for="confirm-password">Confirm new password</label>
+            <div class="otp-password">
+              <input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+              <button type="button" data-password-toggle="confirm-password" aria-label="Show confirmation password">Show</button>
+            </div>
+            <p class="otp-error" data-reset-error role="alert" aria-live="polite" hidden></p>
+            <button class="button wide" type="submit" data-reset-submit>Reset password</button>
+          </form>
+        </section>
+
+        <p class="form-foot" data-otp-foot><a href="/auth/customer/login">Back to sign in</a></p>
+      </div>
+    </section>
+  </div>
+  <script src="/js/otp.js?v=otp-flow" defer></script>
+</body>
+</html>

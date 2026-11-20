@@ -117,7 +117,7 @@ final class StaffController
     {
         $rows = Database::all(
             'SELECT o.*, c.user_id AS customer_user_id,
-                    COALESCE(u.full_name, u.name, "") AS customer_name
+                    COALESCE(u.full_name, "") AS customer_name
              FROM `ORDER` o
              LEFT JOIN customer c ON c.id = o.customer_id
              LEFT JOIN user u ON u.id = c.user_id
@@ -227,7 +227,7 @@ final class StaffController
         $stationId = self::stationId($ctx->user);
         $row = Database::one(
             'SELECT o.*, c.user_id AS customer_user_id,
-                    COALESCE(u.full_name, u.name, "") AS customer_name
+                    COALESCE(u.full_name, "") AS customer_name
              FROM `ORDER` o
              LEFT JOIN customer c ON c.id = o.customer_id
              LEFT JOIN user u ON u.id = c.user_id
@@ -326,7 +326,6 @@ final class StaffController
             'total' => (float) $row['total'],
             'paymentMethod' => (string) ($meta['paymentMethod'] ?? 'cod'),
             'paymentStatus' => (string) ($meta['paymentStatus'] ?? 'paid'),
-            'contactPhone' => (string) ($meta['contactPhone'] ?? ''),
             'notes' => (string) ($meta['notes'] ?? ''),
             'deliveryAddress' => (string) ($meta['deliveryAddress'] ?? ''),
             'createdAt' => Dates::iso($row['created_at']),
@@ -477,8 +476,6 @@ final class StaffController
         $result = Auth::updateProfile((string) $ctx->user['id'], [
             'name' => $ctx->input('name', ''),
             'email' => $ctx->input('email', ''),
-            'phone' => $ctx->input('phone', ''),
-            'location' => $ctx->input('location', ''),
         ]);
 
         if ($result === null) {

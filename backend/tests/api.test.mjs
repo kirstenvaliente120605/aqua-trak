@@ -290,10 +290,11 @@ const sk = `aquatracker_session=${staff.cookie}`;
   check("GET /api/staff/notifications works", notifications.status === 200, `got ${notifications.status}`);
 
   const profile = await req("/api/staff/profile", {
-    method: "PATCH", cookie: sk, body: { name: "Staff Demo", email: "staff.demo@example.com", phone: "0917 555 0100", location: "Pagadian City" },
+    method: "PATCH", cookie: sk, body: { name: "Staff Demo", email: "staff.demo@example.com", location: "Pagadian City" },
   });
   check("PATCH /api/staff/profile updates details",
-    profile.json?.user?.phone === "0917 555 0100", JSON.stringify(profile.json?.user?.phone));
+    profile.json?.user?.name === "Staff Demo" && !("phone" in (profile.json?.user ?? {})),
+    JSON.stringify(profile.json?.user));
 }
 
 console.log("\n=== 9. owner workspace (this route used to throw a 500) ===");
@@ -359,7 +360,7 @@ const ok = `aquatracker_session=${owner.cookie}`;
 
   const saveSettings = await req("/api/owner/settings", {
     method: "POST", cookie: ok,
-    body: { settings: { name: "ClearSpring Water Hub", address: "45 Sabellano St", hours: "7am-9pm", contact: "0917 555 0000" } },
+    body: { settings: { name: "ClearSpring Water Hub", address: "45 Sabellano St", hours: "7am-9pm" } },
   });
   check("POST /api/owner/settings saves", saveSettings.json?.success === true);
 

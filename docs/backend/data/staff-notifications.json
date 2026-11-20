@@ -1,0 +1,18 @@
+[
+  {
+    "id": "N-1",
+    "stationId": "drink-refill",
+    "title": "Owner note",
+    "message": "Check refill inventory before 4:00 PM.",
+    "read": false,
+    "createdAt": "2026-09-22T08:41:53.319Z"
+  },
+  {
+    "id": "N-2",
+    "stationId": "drink-refill",
+    "title": "Shift reminder",
+    "message": "Your next shift starts at 2:00 PM.",
+    "read": false,
+    "createdAt": "2026-09-22T08:41:53.319Z"
+  }
+]

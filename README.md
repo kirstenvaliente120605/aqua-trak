@@ -16,8 +16,10 @@ If Apache is not configured, the same app runs from the PHP built-in server:
 & "C:\xampp\php\php.exe" -S localhost:8080 router.php
 ```
 
-The Node backend in `backend/src` is legacy and still queries the old plural
-tables; it is not used by this setup.
+The documented XAMPP setup uses the PHP API. `npm run dev` also starts the
+alternate Express backend in `backend/src`; it uses the plural-table schema
+from `backend/schema.sql` and the Node OTP migration in
+`backend/migrations/005_node_otp.sql`.
 
 ## Demo Accounts
 - **Admin sign-in**: `admin@test.com` / `password123` (`/auth/admin/login`)

@@ -18,21 +18,21 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
     element.hideTimer = setTimeout(() => element.classList.remove("show"), 2800);
   };
   const accounts = {
-    customer: { email: "customer.demo@example.com", password: "CustomerDemo123!", name: "Customer Demo", subtitle: "Customer account", label: "Customer", eyebrow: "Your water, sorted.", title: "Find your next refill in a few taps.", description: "Discover trusted stations, compare plans, and keep your home stocked without the guesswork." },
-    owner: { email: "owner.demo@example.com", password: "OwnerDemo123!", name: "Owner Demo", subtitle: "ClearSpring Water Hub", label: "Station owner", eyebrow: "Run a smoother station.", title: "Your station, at a glance.", description: "Stay on top of orders, subscriptions, prices, and the customers who keep coming back." },
-    staff: { email: "staff.demo@example.com", password: "StaffDemo123!", name: "Staff Demo", subtitle: "Station staff", label: "Station staff", eyebrow: "Support your station team.", title: "Your station shift, at a glance.", description: "Manage assigned station work, coordinate orders, and stay connected with your owner." },
+    customer: { email: "customer.demo@example.com", password: "CustomerDemo123!", name: "Customer Demo", station: "Customer account", label: "Customer", eyebrow: "Your water, sorted.", title: "Find your next refill in a few taps.", description: "Discover trusted stations, compare plans, and keep your home stocked without the guesswork." },
+    owner: { email: "owner.demo@example.com", password: "OwnerDemo123!", name: "Owner Demo", station: "ClearSpring Water Hub", label: "Station owner", eyebrow: "Run a smoother station.", title: "Your station, at a glance.", description: "Stay on top of orders, subscriptions, prices, and the customers who keep coming back." },
+    staff: { email: "staff.demo@example.com", password: "StaffDemo123!", name: "Staff Demo", station: "", label: "Station staff", eyebrow: "Support your station team.", title: "Your station shift, at a glance.", description: "Manage assigned station work, coordinate orders, and stay connected with your owner." },
   };
   let sessionUser = null;
   const accountFor = (role) => ({ ...accounts[role], ...(sessionUser && sessionUser.role === role ? sessionUser : {}) });
   const initialsFor = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
   const stations = [
-    ["DRINK n' REFILL Purified Water Refilling Station", "45 Sabellano St, Pagadian City", "Mon–Sat 7:30 AM–4:30 PM", "0918 962 5038", "Contact station", "Verified listing"],
-    ["Ultra Pure Water Refilling Station", "Purok Bakhaw A, Brgy. Kawit", "Hours not publicly listed", "0970 488 8866", "Contact station", "Verified listing"],
-    ["Waterpol Water Refilling Station", "Purok Pagang, Brgy. Kawit", "Delivery advertised", "0927 251 4246", "Contact station", "Delivery"],
-    ["PG Aquamaster Water Refilling Station", "Purok Makugihon, Brgy. Bulatok", "Hours not publicly listed", "0951 312 5308", "Contact station", "Verified listing"],
-    ["Aqua'Ter SMN Water Refilling Station", "Beside DXPR, San Jose District", "Delivery advertised", "0975 462 7620", "₱25 / gallon", "Best value"],
-    ["PH2O Water Refilling Station", "Warlito Pulmones St, Santiago District", "Vendo available 24/7", "0985 337 4448", "Contact station", "24/7 vendo"],
-    ["Alka Water Refilling Station", "Zone 11, Alta Tierra Subdivision, Tiguma", "Hours not publicly listed", "0938 686 3252", "Contact station", "Verified listing"],
+    ["DRINK n' REFILL Purified Water Refilling Station", "45 Sabellano St, Pagadian City", "Mon–Sat 7:30 AM–4:30 PM"],
+    ["Ultra Pure Water Refilling Station", "Purok Bakhaw A, Brgy. Kawit", "Hours not publicly listed"],
+    ["Waterpol Water Refilling Station", "Purok Pagang, Brgy. Kawit", "Delivery advertised"],
+    ["PG Aquamaster Water Refilling Station", "Purok Makugihon, Brgy. Bulatok", "Hours not publicly listed"],
+    ["Aqua'Ter SMN Water Refilling Station", "Beside DXPR, San Jose District", "Delivery advertised"],
+    ["PH2O Water Refilling Station", "Warlito Pulmones St, Santiago District", "Vendo available 24/7"],
+    ["Alka Water Refilling Station", "Zone 11, Alta Tierra Subdivision, Tiguma", "Hours not publicly listed"],
   ];
   const stationCoordinates = [
     [7.827330, 123.444185],
@@ -45,7 +45,7 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
   ];
   const orders = [["AT-1048", "Mia Santos", "2 × 5-gallon refill", "₱70.00", "Ready for pickup", "teal"], ["AT-1047", "Noah Garcia", "1 × 5-gallon refill", "₱35.00", "Processing", "orange"], ["AT-1046", "Lia Mendoza", "Monthly · 4 gallons", "₱120.00", "Completed", "slate"], ["AT-1045", "Enzo Reyes", "3 × 5-gallon refill", "₱105.00", "New order", "blue"]];
   const sectionData = {
-    "find-stations": ["Station finder", "Find clean water close by.", "Search nearby refill stations by distance, operating hours, price, and availability.", [["7", "verified listings", "Pagadian City"], ["4", "delivery / pickup options", "check each station"], ["₱25", "listed starting price", "Aqua'Ter SMN"]], stations.map((item) => [item[0], `${item[1]} · ${item[2]} · ${item[3]}`, "Listed"])],
+    "find-stations": ["Station finder", "Find clean water close by.", "Search nearby refill stations by distance, operating hours, price, and availability.", [["7", "verified listings", "Pagadian City"], ["4", "delivery / pickup options", "check each station"], ["₱25", "listed starting price", "Aqua'Ter SMN"]], stations.map((item) => [item[0], `${item[1]} · ${item[2]}`, "Listed"])],
     "my-subscriptions": ["Refill plans", "Stay ahead of your next refill.", "Manage active plans, renewal dates, gallon usage, and delivery preferences.", [["1", "active plan", "Monthly essentials"], ["2 / 4", "gallons used", "this billing cycle"], ["Oct 03", "next renewal", "13 days away"]], [["Monthly essentials", "4 gallons per month · ClearSpring Water Hub", "Active"], ["Next refill", "2 gallons planned · Delivery on Oct 03", "Scheduled"], ["Payment method", "Visa ending in 2048 · Auto-renew enabled", "Verified"]]],
     "orders-history": ["Refill history", "Every refill, in one place.", "Review past orders, pickup details, receipts, and current refill status.", [["8", "completed orders", "this year"], ["1", "in progress", "ready soon"], ["₱1,240", "saved with plans", "this year"]], [["Order #AT-2048", "2 gallons · ClearSpring Water Hub · Sep 20", "Ready for pickup"], ["Order #AT-1987", "4 gallons · AquaVida Refill Station · Sep 05", "Completed"], ["Order #AT-1873", "2 gallons · BlueDrop Purified Water · Aug 18", "Completed"]]],
     rewards: ["AquaPoints", "Your refills are giving back.", "Track points earned from refills and redeem perks for your next station visit.", [["120", "points available", "ready to redeem"], ["2", "perks unlocked", "this month"], ["40", "points to next perk", "Keep refilling"]], [["₱50 refill credit", "Redeem with 150 AquaPoints", "40 points away"], ["Reusable bottle", "Unlocked after 100 points", "Available"], ["September streak", "3 consecutive refill weeks", "+20 bonus points"]]],
@@ -53,19 +53,19 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
     subscriptions: ["Plan management", "Grow recurring refills.", "Monitor active plans, upcoming renewals, and customers at risk of churning.", [["126", "active subscriptions", "+11 this month"], ["24", "renewals this week", "next 7 days"], ["94%", "renewal rate", "above target"]], [["Monthly essentials", "82 subscribers · 4 gallons / month", "Healthy"], ["Family refill plan", "31 subscribers · 8 gallons / month", "Growing"], ["At-risk renewals", "13 customers · renewal within 3 days", "Follow up"]]],
     customers: ["Customer relationships", "Know who keeps coming back.", "Understand regular customers, recent visits, and service follow-ups for your station.", [["284", "returning customers", "last 90 days"], ["38", "new customers", "this month"], ["4.9", "average rating", "128 reviews"]], [["Mia Santos", "12 visits · Monthly essentials plan", "Loyal"], ["Paolo Reyes", "7 visits · Last refill Sep 19", "Active"], ["Lara Cruz", "1 visit · No plan yet", "Follow up"]]],
     promotions: ["Station marketing", "Give customers a reason to refill.", "Create, monitor, and pause offers that bring more people to your station.", [["3", "active promotions", "running now"], ["184", "redemptions", "this month"], ["₱9.4k", "revenue influenced", "promotion sales"]], [["Free delivery weekend", "Sep 21–22 · First-time customers", "Active"], ["Bring your bottle", "10% off · Reusable bottle users", "Active"], ["September streak", "20 bonus points · Returning customers", "Draft"]]],
-    "station-settings": ["Station profile", "Keep your station information accurate.", "Update operating hours, prices, pickup instructions, and the public station listing.", [["Open", "station status", "until 9:00 PM"], ["₱35", "price / gallon", "last updated today"], ["4.9", "public rating", "128 reviews"]], [["Operating hours", "Mon–Sun · 6:00 AM to 9:00 PM", "Published"], ["Pickup instructions", "Use the green counter beside the entrance", "Published"], ["Water quality certificate", "Renewal due Nov 12, 2026", "Verified"]]],
+    "station-settings": ["Station profile", "Keep your station information accurate.", "Update operating hours, prices, pickup instructions, and the public station listing.", [["Open", "station status", "until 9:00 PM"], ["₱35", "price / 5-gallon refill", "last updated today"], ["4.9", "public rating", "128 reviews"]], [["Operating hours", "Mon–Sun · 6:00 AM to 9:00 PM", "Published"], ["Pickup instructions", "Use the green counter beside the entrance", "Published"], ["Water quality certificate", "Renewal due Nov 12, 2026", "Verified"]]],
     "my-shifts": ["Shift operations", "Your station shift, at a glance.", "Manage assigned station work and stay connected with your owner.", [["4", "orders assigned", "today"], ["2:00 PM", "next shift", "to 9:00 PM"], ["1", "inventory alert", "check stock"]], [["Orders assigned", "4 pickup orders need attention today", "Open"], ["Next shift", "Today · 2:00 PM to 9:00 PM", "Scheduled"], ["Inventory alert", "Check refill inventory before 4:00 PM", "Important"]]],
     "station-orders": ["Station operations", "Coordinate today’s pickup queue.", "Review assigned orders and keep customers updated throughout your shift.", [["4", "assigned orders", "today"], ["2", "ready for pickup", "next 2 hours"], ["100%", "shift coverage", "on track"]], [["AT-1048", "Mia Santos · 2 × 5-gallon refill", "Ready"], ["AT-1047", "Noah Garcia · 1 × 5-gallon refill", "Processing"], ["AT-1045", "Enzo Reyes · 3 × 5-gallon refill", "New"]]],
   };
   const labels = { "find-stations": "Find stations", "my-subscriptions": "My subscriptions", "orders-history": "Orders & history", rewards: "Rewards", orders: "Orders", subscriptions: "Subscriptions", customers: "Customers", "staff-approvals": "Staff approvals", promotions: "Promotions", "station-settings": "Station settings", "my-shifts": "My shifts", "station-orders": "Station orders", inventory: "Inventory", "customer-requests": "Customer requests" };
   const catalog = [
-    ["drink-refill", "DRINK n' REFILL Purified Water Refilling Station", "₱35 / gallon", true],
-    ["ultra-pure", "Ultra Pure Water Refilling Station", "₱30 / gallon", false],
-    ["waterpol", "Waterpol Water Refilling Station", "₱35 / gallon", true],
-    ["pg-aquamaster", "PG Aquamaster Water Refilling Station", "₱30 / gallon", false],
-    ["aquater", "Aqua'Ter SMN Water Refilling Station", "₱25 / gallon", true],
-    ["ph2o", "PH2O Water Refilling Station", "₱30 / gallon", false],
-    ["alka", "Alka Water Refilling Station", "₱35 / gallon", true],
+    ["drink-refill", "DRINK n' REFILL Purified Water Refilling Station", "₱35 / 5-gallon refill", true],
+    ["ultra-pure", "Ultra Pure Water Refilling Station", "₱30 / 5-gallon refill", false],
+    ["waterpol", "Waterpol Water Refilling Station", "₱35 / 5-gallon refill", true],
+    ["pg-aquamaster", "PG Aquamaster Water Refilling Station", "₱30 / 5-gallon refill", false],
+    ["aquater", "Aqua'Ter SMN Water Refilling Station", "₱25 / 5-gallon refill", true],
+    ["ph2o", "PH2O Water Refilling Station", "₱30 / 5-gallon refill", false],
+    ["alka", "Alka Water Refilling Station", "₱35 / 5-gallon refill", true],
   ];
 
   function shell(role, title, active, content) {
@@ -73,7 +73,7 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
     const nav = role === "owner" ? [["Overview", ""], ["Orders", "orders"], ["Subscriptions", "subscriptions"], ["Customers", "customers"], ["Staff approvals", "staff-approvals"], ["Promotions", "promotions"], ["Station settings", "station-settings"], ["Profile", "profile"]] : role === "staff" ? [["Overview", ""], ["My shifts", "my-shifts"], ["Station orders", "station-orders"], ["Inventory", "inventory"], ["Customer requests", "customer-requests"], ["Staff profile", "profile"]] : [["Overview", ""], ["Find stations", "find-stations"], ["Order water", "order-water"], ["My subscriptions", "my-subscriptions"], ["Orders & history", "orders-history"], ["Rewards", "rewards"], ["Profile", "profile"]];
     const navHtml = nav.map(([label, path]) => `<a class="${active === label ? "active" : ""}" href="${path ? `/dashboard/${role}/${path}` : `/dashboard/${role}`}"><span>•</span>${label}</a>`).join("");
     const initials = initialsFor(account.name);
-    return `<div class="app-shell"><aside class="sidebar"><a class="mark mark-compact" href="/"><img src="/assets/logo/aquatracker-icon-teal-light.png" alt="AquaTracker logo" class="mark-icon-img"><span>Aqua<span class="mark-accent">Tracker</span></span></a><div class="account-chip"><span class="avatar">${initials}</span><span><strong>${esc(account.name)}</strong><small>${esc(account.label)}</small></span></div><nav class="side-nav">${navHtml}</nav><a class="signout" href="/auth/logout">↪ Sign out</a></aside><section class="workspace"><header class="topbar"><div class="mobile-menu"><button data-menu-toggle>☰</button></div><div><small>${esc(account.label)} workspace</small><h1>${esc(title)}</h1></div><div class="top-actions"><button class="icon-button" data-notifications aria-label="Open notifications"><svg class="bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button><span class="top-account"><strong>${esc(account.name)}</strong><small>${esc(account.subtitle)}</small></span><span class="avatar pale">${initials}</span></div></header><main class="content">${content}</main></section></div><div class="notification-panel" data-notification-panel><strong>Notifications</strong><p>Your latest AquaTracker updates will appear here.</p><button data-close-notifications>Mark all read</button></div>`;
+    return `<div class="app-shell"><aside class="sidebar"><a class="mark mark-compact" href="/"><img src="/assets/logo/aquatracker-icon-teal-light.png" alt="AquaTracker logo" class="mark-icon-img"><span>Aqua<span class="mark-accent">Tracker</span></span></a><div class="account-chip"><span class="avatar">${initials}</span><span><strong>${esc(account.name)}</strong><small>${esc(account.label)}</small></span></div><nav class="side-nav">${navHtml}</nav><a class="signout" href="/auth/logout">↪ Sign out</a></aside><section class="workspace"><header class="topbar"><div class="mobile-menu"><button data-menu-toggle>☰</button></div><div><small>${esc(account.label)} workspace</small><h1>${esc(title)}</h1></div><div class="top-actions"><button class="icon-button" data-notifications aria-label="Open notifications"><svg class="bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button><span class="top-account"><strong>${esc(account.name)}</strong><small>${esc(account.station)}</small></span><span class="avatar pale">${initials}</span></div></header><main class="content">${content}</main></section></div><div class="notification-panel" data-notification-panel><strong>Notifications</strong><p>Your latest AquaTracker updates will appear here.</p><button data-close-notifications>Mark all read</button></div>`;
   }
   function stats(items) { return `<div class="stats three">${items.map((item) => `<div><b>${esc(item[0])}</b><small>${esc(item[1])}<br>${esc(item[2])}</small></div>`).join("")}</div>`; }
   function stationRows() {
@@ -142,20 +142,76 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
     const preview = $("[data-order-preview]");
     const message = $("[data-order-message]");
     const requestedStation = form.elements.stationId.dataset.requestedStation;
+    const deliveryOption = form.elements.fulfillment.querySelector('option[value="delivery"]');
+    deliveryOption.disabled = true;
+    let stationCapabilitiesLoaded = false;
+    const orderStations = new Map(catalog.map(([id, name, price, delivery]) => [
+      id,
+      {
+        id,
+        name,
+        pricePerGallon: Number(price.replace(/[^\d.]/g, "")),
+        deliveryAvailable: delivery,
+        deliveryFee: delivery ? 15 : 0,
+        status: "open",
+      },
+    ]));
     if (catalog.some(([id]) => id === requestedStation)) form.elements.stationId.value = requestedStation;
+
     const updatePreview = () => {
-      const station = catalog.find(([id]) => id === form.elements.stationId.value);
+      const station = orderStations.get(form.elements.stationId.value);
+      if (!station) {
+        preview.textContent = "Station details are unavailable.";
+        return;
+      }
       const gallons = Math.max(1, Number(form.elements.gallons.value) || 1);
-      const unit = Number(station[2].replace(/[^\d.]/g, ""));
       const rate = gallons >= 8 ? 0.15 : gallons >= 5 ? 0.1 : 0;
-      const subtotal = unit * gallons;
-      const total = subtotal - subtotal * rate;
-      preview.textContent = `Estimated total: ₱${total.toFixed(2)}${rate ? ` · ${rate * 100}% discount applied` : ""}`;
+      const subtotal = station.pricePerGallon * gallons;
+      const deliveryFee = form.elements.fulfillment.value === "delivery" && station.deliveryAvailable
+        ? station.deliveryFee
+        : 0;
+      const total = subtotal - subtotal * rate + deliveryFee;
+      preview.textContent = `Estimated total: ₱${total.toFixed(2)}${rate ? ` · ${rate * 100}% discount applied` : ""}${deliveryFee ? ` · ₱${deliveryFee.toFixed(2)} delivery fee` : ""}`;
     };
+
+    const updateFulfillment = () => {
+      const station = orderStations.get(form.elements.stationId.value);
+      const canDeliver = stationCapabilitiesLoaded && Boolean(station && station.deliveryAvailable);
+      deliveryOption.disabled = !canDeliver;
+      if (!canDeliver && form.elements.fulfillment.value === "delivery") {
+        form.elements.fulfillment.value = "pickup";
+        message.textContent = "Delivery is unavailable at this station; pickup is selected.";
+      }
+      updatePreview();
+    };
+
+    form.elements.stationId.addEventListener("change", () => {
+      message.textContent = "";
+      updateFulfillment();
+    });
+    form.elements.fulfillment.addEventListener("change", () => {
+      const station = orderStations.get(form.elements.stationId.value);
+      if (form.elements.fulfillment.value === "delivery" && !station?.deliveryAvailable) {
+        form.elements.fulfillment.value = "pickup";
+        message.textContent = "This station offers pickup only.";
+      } else {
+        message.textContent = "";
+      }
+      updatePreview();
+    });
     form.addEventListener("input", updatePreview);
-    form.addEventListener("change", updatePreview);
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const station = orderStations.get(form.elements.stationId.value);
+      if (!station || station.status !== "open") {
+        message.textContent = "This station is closed or unavailable.";
+        return;
+      }
+      if (form.elements.fulfillment.value === "delivery" && !station.deliveryAvailable) {
+        message.textContent = "This station does not offer delivery.";
+        return;
+      }
       message.textContent = "Submitting order…";
       try {
         const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
@@ -169,6 +225,43 @@ const API_BASE = (typeof window !== "undefined" && window.location && window.loc
         message.textContent = error.message;
       }
     });
+
+    fetch("/api/stations", { headers: { Accept: "application/json" } })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok || !Array.isArray(payload.stations)) {
+          throw new Error(payload.error || "Station details are unavailable.");
+        }
+        payload.stations.forEach((station) => {
+          if (!orderStations.has(station.id)) return;
+          const current = orderStations.get(station.id);
+          const deliveryValue = station.deliveryAvailable ?? station.delivery;
+          const deliveryAvailable = deliveryValue === true || deliveryValue === 1 || deliveryValue === "1";
+          const deliveryFeeValue = Number(station.deliveryFee ?? station.delivery_fee);
+          orderStations.set(station.id, {
+            ...current,
+            pricePerGallon: Number(station.pricePerGallon ?? station.price_per_gallon ?? current.pricePerGallon),
+            deliveryAvailable,
+            deliveryFee: deliveryAvailable && Number.isFinite(deliveryFeeValue) && deliveryFeeValue >= 0
+              ? deliveryFeeValue
+              : 0,
+            status: String(station.status || "unavailable").toLowerCase(),
+          });
+        });
+        stationCapabilitiesLoaded = true;
+        updateFulfillment();
+      })
+      .catch((error) => {
+        console.error("Unable to load current station capabilities:", error);
+        orderStations.forEach((station) => {
+          station.deliveryAvailable = false;
+          station.deliveryFee = 0;
+        });
+        stationCapabilitiesLoaded = true;
+        message.textContent = "Current station details are unavailable; delivery is disabled.";
+        updateFulfillment();
+      });
+
     updatePreview();
   }
   async function subscriptionPage(role) {
@@ -263,28 +356,38 @@ async function staffSection(role, key) {
     document.body.innerHTML = shell(role, "Staff approvals", "Staff approvals", `<section class="section-hero owner"><span class="eyebrow">Station team</span><h2>Confirm your staff.</h2><p>Review staff registration requests for your station and approve only people you know are official team members.</p></section><section class="panel"><div class="section-heading"><span class="eyebrow">Pending requests</span><h2>Staff approvals</h2></div><div class="activity-list" data-approval-list><p class="empty-state">Loading approval requests…</p></div></section>`);
     bindDashboard();
     const list = $("[data-approval-list]");
+    const account = accountFor(role);
+    let ownerStations = [];
+    try {
+      const stationsResponse = await fetch("/api/owner/stations", { headers: { Accept: "application/json" } });
+      const stationData = await stationsResponse.json();
+      ownerStations = Array.isArray(stationData.stations) ? stationData.stations : [];
+    } catch { ownerStations = []; }
+    const stationOptions = (selected) => ownerStations.map((station) => `<option value="${esc(station.id)}"${station.id === selected ? " selected" : ""}>${esc(station.name)}</option>`).join("");
     try {
       const response = await fetch("/api/staff-approvals", { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error("Unable to load staff approvals.");
       const { approvals } = await response.json();
-      list.innerHTML = approvals.length ? approvals.map((approval) => `<article data-approval-id="${esc(approval.id)}"><span class="avatar pale">${esc(initialsFor(approval.name))}</span><div><b>${esc(approval.name)}</b><small>${esc(approval.email)} · ${esc(approval.station)}</small><small>Requested ${new Date(approval.createdAt).toLocaleDateString()}</small></div><button class="button small" data-approval-decision="approve">Approve</button><button class="button small outline" data-approval-decision="reject">Reject</button></article>`).join("") : '<p class="empty-state">No pending staff requests for this station.</p>';
+      list.innerHTML = approvals.length ? approvals.map((approval) => `<article data-approval-id="${esc(approval.id)}"><span class="avatar pale">${esc(initialsFor(approval.name))}</span><div><b>${esc(approval.name)}</b><small>${esc(approval.email)}</small><small>Requested ${new Date(approval.createdAt).toLocaleDateString()}</small></div><select data-approval-station aria-label="Assign station">${stationOptions(account.stationId)}</select><button class="button small" data-approval-decision="approve">Approve</button><button class="button small outline" data-approval-decision="reject">Reject</button></article>`).join("") : '<p class="empty-state">No pending staff requests.</p>';
       $$("[data-approval-decision]").forEach((button) => button.addEventListener("click", async () => {
         const row = button.closest("[data-approval-id]");
         const decision = button.dataset.approvalDecision;
         button.disabled = true;
         let result;
         try {
-          result = await fetch(`/api/staff-approvals/${encodeURIComponent(row.dataset.approvalId)}`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ decision }) });
+          const stationId = row.querySelector("[data-approval-station]")?.value || account.stationId || "";
+          result = await fetch(`/api/staff-approvals/${encodeURIComponent(row.dataset.approvalId)}`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ decision, stationId }) });
         } catch {
           result = null;
         }
         if (!result?.ok) {
           button.disabled = false;
-          toast("That approval request could not be updated.");
+          const detail = await result?.json().catch(() => ({}));
+          toast(detail?.error || "That approval request could not be updated.");
           return;
         }
         row.remove();
-        if (!list.querySelector("[data-approval-id]")) list.innerHTML = '<p class="empty-state">No pending staff requests for this station.</p>';
+        if (!list.querySelector("[data-approval-id]")) list.innerHTML = '<p class="empty-state">No pending staff requests.</p>';
         toast(decision === "approve" ? "Staff member approved." : "Staff request rejected.");
       }));
     } catch {
@@ -327,7 +430,7 @@ async function staffSection(role, key) {
     }
     const account = { ...accountFor(role), ...savedProfile };
     const staffAccess = role === "staff" ? `<label>Role<input value="Station staff" disabled></label><label>Assigned station<input value="${esc(account.station || "Assigned station")}" disabled></label><label>Permissions<input value="${esc((account.permissions || ["orders", "inventory", "requests"]).join(", "))}" disabled></label>` : "";
-    const content = `<div class="page-heading"><span class="eyebrow">Account & preferences</span><h2>Make it yours.</h2><p>Update permitted contact details. Role, permissions, and assigned station cannot be changed by staff.</p></div><form class="profile-grid" data-profile-form><section class="profile-card dark"><span class="avatar large">${initialsFor(account.name)}</span><h2 data-profile-name>${esc(account.name)}</h2><p>${esc(account.subtitle)}</p><hr><p>✓ Role verified</p><p>♢ Notifications enabled</p></section><section class="panel profile-fields"><label>Full name<input name="name" value="${esc(account.name)}" required></label><label>Email address<input name="email" type="email" value="${esc(account.email)}" required></label><label>Mobile number<input name="phone" value="${esc(account.phone || "+63 917 555 0148")}"></label><label>Location<input name="location" value="${esc(account.location || "Pagadian City, Zamboanga del Sur")}"></label>${staffAccess}${role === "owner" ? '<label>Station name<input name="station" value="ClearSpring Water Hub"></label>' : ""}<div class="form-actions"><small data-profile-message>Changes are saved securely to your profile.</small><button type="button" class="button outline" data-profile-discard>Discard</button><button class="button" type="submit">✓ Save changes</button></div></section></form>`;
+    const content = `<div class="page-heading"><span class="eyebrow">Account & preferences</span><h2>Make it yours.</h2><p>Update your account details. Role, permissions, and assigned station cannot be changed by staff.</p></div><form class="profile-grid" data-profile-form><section class="profile-card dark"><span class="avatar large">${initialsFor(account.name)}</span><h2 data-profile-name>${esc(account.name)}</h2><p>${esc(account.station)}</p><hr><p>✓ Role verified</p><p>♢ Notifications enabled</p></section><section class="panel profile-fields"><label>Full name<input name="name" value="${esc(account.name)}" required></label><label>Email address<input name="email" type="email" value="${esc(account.email)}" required></label>${staffAccess}${role === "owner" ? `<label>Station name<input name="station" value="${esc(account.station)}"></label>` : ""}<div class="form-actions"><small data-profile-message>Changes are saved securely to your profile.</small><button type="button" class="button outline" data-profile-discard>Discard</button><button class="button" type="submit">✓ Save changes</button></div></section></form>`;
     document.body.innerHTML = shell(role, "Profile settings", "Profile", content);
     bindDashboard();
     bindProfile();
@@ -427,11 +530,19 @@ async function staffSection(role, key) {
     $("[data-auth-heading]").textContent = mode === "register" ? "Create your account" : "Welcome back";
     $("[data-auth-copy]").textContent = mode === "register" ? `Join AquaTracker as a ${account.label.toLowerCase()} and get started.` : "Sign in to continue where you left off.";
     const message = $("[data-auth-message]");
-    const errors = { invalid: "Invalid email or password.", role: "Use the login page for your account role.", required: "Please sign in to continue.", passwords: "Passwords must match.", email: "Please enter a valid email address.", password: "Password must be at least 8 characters.", station: "Station name is required for this role." };
-    const notices = { "staff-registration": "Staff registration submitted successfully. You can now sign in.", "staff-pending": "Your staff account is waiting for confirmation from the owner of this station." };
+    const errors = { invalid: "Invalid email or password.", role: "Use the login page for your account role.", required: "Please sign in to continue.", passwords: "Passwords must match.", email: "Please enter a valid email address.", password: "Password must be at least 8 characters.", station: "Choose an existing station from the catalogue.", email_not_verified: "Verify your email address to continue." };
+    const notices = { "staff-registration": "Staff registration submitted successfully. You can now sign in.", "staff-pending": "Your staff account is waiting for confirmation from the owner of this station.", "password-reset": "Your password was reset. Sign in with your new password." };
     if (params.get("error") || params.get("notice")) {
       message.hidden = false;
       message.textContent = errors[params.get("error")] || notices[params.get("notice")] || params.get("error") || params.get("notice");
+    }
+    if (params.get("error") === "email_not_verified" && params.get("email")) {
+      sessionStorage.setItem("aquatracker_otp_email", params.get("email"));
+      if (params.get("delivery") === "failed") {
+        sessionStorage.setItem("aquatracker_otp_notice", "We could not send a code right now. Please try again later.");
+      }
+      window.location.replace("/auth/verify-email");
+      return;
     }
     $$("[data-role-tab]").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.roleTab === role);
@@ -443,59 +554,89 @@ async function staffSection(role, key) {
       });
     });
     const form = $("[data-auth-form]");
-    form.action = `/auth/${role}/${mode}`;
+    form.action = mode === "register" ? "/auth/signup" : "/auth/login";
     form.dataset.role = role; form.dataset.mode = mode;
     $("[data-name-field]").style.display = mode === "register" ? "grid" : "none";
-    $("[data-phone-field]").style.display = mode === "register" ? "grid" : "none";
-    $("[data-station-field]").style.display = mode === "register" && role !== "customer" ? "grid" : "none";
+    const stationField = $("[data-station-field]");
+    const showStation = mode === "register" && role !== "customer";
+    stationField.hidden = !showStation;
+    stationField.innerHTML = showStation
+      ? `<span>Station name</span><input name="station" list="available-stations" value="${role === "staff" ? esc(stations[0][0]) : ""}" placeholder="Choose a station from the catalogue"${role === "staff" ? " readonly" : ""}><datalist id="available-stations">${stations.map(([name]) => `<option value="${esc(name)}"></option>`).join("")}</datalist>`
+      : "";
     $("[data-confirm-field]").style.display = mode === "register" ? "grid" : "none";
-    $("[data-remember-field]").style.display = mode === "login" ? "flex" : "none";
     $("[data-auth-submit]").textContent = mode === "register" ? "Create account →" : "Sign in →";
     form.elements.name.required = mode === "register";
-    form.elements.phone.required = false;
     form.elements.confirmPassword.required = mode === "register";
-    form.elements.station.required = mode === "register" && role !== "customer";
+    const stationInput = form.elements.station;
+    if (stationInput) stationInput.required = mode === "register";
     $("[data-form-switch-label]").textContent = mode === "register" ? "Already have an account?" : "New to AquaTracker?";
     $("[data-form-switch]").textContent = mode === "register" ? "Sign in" : "Create an account";
     $("[data-form-switch]").href = `/auth/${role}/${mode === "register" ? "login" : "register"}`;
+    $("[data-forgot-link]").hidden = mode !== "login";
     $("[data-demo-email]").textContent = `${account.email} · click to fill`;
     $("[data-demo-fill]").style.display = mode === "login" ? "grid" : "none";
     $("[data-demo-fill]").addEventListener("click", () => { form.elements.email.value = account.email; form.elements.password.value = account.password; });
     form.addEventListener("submit", async (event) => {
-      if (mode !== "register") return;
+      event.preventDefault();
       if (form.elements.password.value.length < 8) {
-        event.preventDefault();
         message.hidden = false;
         message.textContent = "Password must be at least 8 characters.";
-      } else if (form.elements.password.value !== form.elements.confirmPassword.value) {
-        event.preventDefault();
+        return;
+      }
+      if (mode === "register" && form.elements.password.value !== form.elements.confirmPassword.value) {
         message.hidden = false;
         message.textContent = "Passwords must match.";
-      } else {
-        event.preventDefault();
-        const payload = Object.fromEntries(new FormData(form).entries());
-        payload.phone = form.elements.phone.value.trim() || null;
-        const submitButton = $("[data-auth-submit]");
-        submitButton.disabled = true;
-        try {
-          const response = await fetch(form.action, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json", Accept: "text/html, application/json" },
-            body: JSON.stringify(payload),
-          });
-          if (response.redirected) {
-            window.location.assign(response.url);
+        return;
+      }
+      const payload = Object.fromEntries(new FormData(form).entries());
+      payload.role = role;
+      const submitButton = $("[data-auth-submit]");
+      submitButton.disabled = true;
+      message.hidden = true;
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (result.code === "EMAIL_NOT_VERIFIED") {
+            sessionStorage.setItem("aquatracker_otp_email", payload.email);
+            try {
+              const resend = await fetch("/auth/resend-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({ email: payload.email, purpose: "verify_email" }),
+              });
+              const resendResult = await resend.json().catch(() => ({}));
+              if (!resend.ok) sessionStorage.setItem("aquatracker_otp_notice", resendResult.error || "A new code could not be sent yet.");
+            } catch {
+              sessionStorage.setItem("aquatracker_otp_notice", "A new code could not be sent yet. Please try again.");
+            }
+            window.location.assign("/auth/verify-email");
             return;
           }
-          const result = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(result.error || "Account creation failed.");
-          window.location.assign(result.redirectUrl || "/");
-        } catch (error) {
-          message.hidden = false;
-          message.textContent = error.message || "Account creation failed. Please try again.";
-          submitButton.disabled = false;
+          if (["OTP_DELIVERY_FAILED", "OTP_RATE_LIMITED"].includes(result.code) && result.email) {
+            sessionStorage.setItem("aquatracker_otp_email", result.email);
+            sessionStorage.setItem("aquatracker_otp_notice", result.error || "We could not send a code right now. Please try again later.");
+            window.location.assign("/auth/verify-email");
+            return;
+          }
+          throw new Error(result.error || (mode === "register" ? "Account creation failed." : "Sign-in failed."));
         }
+        if (mode === "register") {
+          sessionStorage.setItem("aquatracker_otp_email", result.email || payload.email);
+          sessionStorage.removeItem("aquatracker_otp_notice");
+          window.location.assign("/auth/verify-email");
+          return;
+        }
+        window.location.assign(result.redirectUrl || "/");
+      } catch (error) {
+        message.hidden = false;
+        message.textContent = error.message || "Please try again.";
+        submitButton.disabled = false;
       }
     });
   }

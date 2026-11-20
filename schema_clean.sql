@@ -22,21 +22,16 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id`            CHAR(36)     NOT NULL,
   `email`         VARCHAR(190) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `name`          VARCHAR(100) NOT NULL,
   `role`          ENUM('customer','owner','staff') NOT NULL,
   `subtitle`      VARCHAR(190) NOT NULL DEFAULT '',
-  `station`       VARCHAR(190) NOT NULL DEFAULT '',
   `station_id`    VARCHAR(64)  NOT NULL DEFAULT '',
   `permissions`   TEXT         NULL,
   `phone`         VARCHAR(40)  NOT NULL DEFAULT '',
-  `location`      VARCHAR(120) NOT NULL DEFAULT '',
   `status`        ENUM('active','pending','rejected') NOT NULL DEFAULT 'active',
-  `reviewed_at`   DATETIME     NULL,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_email` (`email`),
-  KEY `ix_users_role_status` (`role`,`status`),
-  KEY `ix_users_station` (`station`)
+  KEY `ix_users_role_status` (`role`,`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
@@ -252,7 +247,7 @@ CREATE TABLE IF NOT EXISTS `station_pricing` (
 -- ---------------------------------------------------------------------------
 -- Station catalogue seed. Prices, delivery flags and areas match
 -- backend/src/services/commerceStore.js stationCatalog; coordinates, addresses,
--- phone numbers, opening hours and ratings match the frontend's DEFAULT_STATIONS
+-- opening hours and ratings match the frontend's DEFAULT_STATIONS
 -- seed in frontend/js/dashboard.js.
 --
 -- This is an UPSERT, not a plain INSERT IGNORE, so re-running /install repairs
@@ -263,26 +258,25 @@ CREATE TABLE IF NOT EXISTS `station_pricing` (
 -- them, and an empty table simply means "use the defaults in PHP".
 --
 -- `alka` has no frontend fixture anywhere in the repo, so its address repeats its
--- area and its phone, hours and rating are left empty. Rating 0 therefore means
+-- area, hours and rating are left empty. Rating 0 therefore means
 -- "not yet rated", not "rated zero stars"; the station finder sorts and filters
 -- on rating, so an unrated station simply drops out of a "top rated" filter
 -- rather than outranking anything.
 -- ---------------------------------------------------------------------------
 INSERT INTO `stations`
-  (`id`, `name`, `area`, `address`, `phone`, `hours`, `rating`, `price_per_gallon`, `delivery`, `lat`, `lng`)
+  (`id`, `name`, `area`, `address`, `hours`, `rating`, `price_per_gallon`, `delivery`, `lat`, `lng`)
 VALUES
-  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    '0918 962 5038', 'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 7.8273300, 123.4441850),
-  ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit',                            'Purok Bakhaw A, Brgy. Kawit, Pagadian City',          '0970 488 8866', 'Mon-Sun 8:00 AM-6:00 PM',   4.7, 30, 0, 7.8312000, 123.4437000),
-  ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit',                              'Purok Pagang, Brgy. Kawit, Pagadian City',             '0927 251 4246', 'Mon-Sat 7:00 AM-6:30 PM',   4.8, 35, 1, 7.8347000, 123.4481000),
-  ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok',                        'Purok Makugihon, Brgy. Bulatok, Pagadian City',        '0951 312 5308', 'Mon-Sat 8:00 AM-5:00 PM',   4.6, 30, 0, 7.8198000, 123.4297000),
-  ('aquater',       'Aqua''Ter SMN Water Refilling Station',            'Beside DXPR, San Jose District',                         'Beside DXPR Radio, San Jose District, Pagadian City',  '0975 462 7620', 'Mon-Sun 6:30 AM-7:00 PM',   4.9, 25, 1, 7.8191000, 123.4412000),
-  ('ph2o',          'PH2O Water Refilling Station',                      'Warlito Pulmones St, Santiago District',                 'Warlito Pulmones St, Santiago District, Pagadian City','0985 337 4448', '24/7 Automated Vendo & Counter', 4.8, 30, 0, 7.8362000, 123.4264000),
-  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',              '',                            0.0, 35, 1, 7.8405800, 123.4633600)
+  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 7.8273300, 123.4441850),
+  ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit',                            'Purok Bakhaw A, Brgy. Kawit, Pagadian City',          'Mon-Sun 8:00 AM-6:00 PM',   4.7, 30, 0, 7.8312000, 123.4437000),
+  ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit',                              'Purok Pagang, Brgy. Kawit, Pagadian City',             'Mon-Sat 7:00 AM-6:30 PM',   4.8, 35, 1, 7.8347000, 123.4481000),
+  ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok',                        'Purok Makugihon, Brgy. Bulatok, Pagadian City',        'Mon-Sat 8:00 AM-5:00 PM',   4.6, 30, 0, 7.8198000, 123.4297000),
+  ('aquater',       'Aqua''Ter SMN Water Refilling Station',            'Beside DXPR, San Jose District',                         'Beside DXPR Radio, San Jose District, Pagadian City',  'Mon-Sun 6:30 AM-7:00 PM',   4.9, 25, 1, 7.8191000, 123.4412000),
+  ('ph2o',          'PH2O Water Refilling Station',                      'Warlito Pulmones St, Santiago District',                 'Warlito Pulmones St, Santiago District, Pagadian City','24/7 Automated Vendo & Counter', 4.8, 30, 0, 7.8362000, 123.4264000),
+  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',                            0.0, 35, 1, 7.8405800, 123.4633600)
 ON DUPLICATE KEY UPDATE
   `name`             = VALUES(`name`),
   `area`             = VALUES(`area`),
   `address`          = VALUES(`address`),
-  `phone`            = VALUES(`phone`),
   `hours`            = VALUES(`hours`),
   `rating`           = VALUES(`rating`),
   `price_per_gallon` = VALUES(`price_per_gallon`),

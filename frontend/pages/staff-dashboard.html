@@ -54,7 +54,7 @@
         <div class="top-actions">
           <div class="top-account">
             <strong id="top-name">Dani Cruz</strong>
-            <small id="top-subtitle">ClearSpring Water Hub</small>
+            <small id="top-station">Station</small>
           </div>
           <span class="avatar pale" id="top-avatar">DC</span>
         </div>
@@ -112,8 +112,8 @@
       const initials = (user.name || 'ST').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
       document.getElementById('user-avatar').textContent = initials;
       document.getElementById('top-avatar').textContent = initials;
-      document.getElementById('user-role-label').textContent = user.subtitle || 'Station Staff';
-      document.getElementById('top-subtitle').textContent = user.subtitle || 'Station Staff';
+      document.getElementById('user-role-label').textContent = user.station || 'Station Staff';
+      document.getElementById('top-station').textContent = user.station || 'Station Staff';
     }
 
     function renderNavigation(user) {

@@ -62,7 +62,7 @@
           </button>
           <div class="top-account">
             <strong id="top-name">Mia Santos</strong>
-            <small id="top-subtitle">Pagadian City</small>
+            <small id="top-station">Pagadian City</small>
           </div>
           <span class="avatar pale" id="top-avatar">MS</span>
         </div>
@@ -129,8 +129,8 @@
       document.getElementById('top-name').textContent = user.name;
       document.getElementById('user-avatar').textContent = initials;
       document.getElementById('top-avatar').textContent = initials;
-      document.getElementById('user-role-label').textContent = user.subtitle || 'Household Account';
-      document.getElementById('top-subtitle').textContent = user.address ? user.address.split(',')[0] : 'Pagadian City';
+      document.getElementById('user-role-label').textContent = user.station || 'Household Account';
+      document.getElementById('top-station').textContent = user.address ? user.address.split(',')[0] : 'Pagadian City';
     }
 
     function renderNavigation(user) {
@@ -169,7 +169,6 @@
       store: '<path d="M3 9.5 5 4h14l2 5.5"/><path d="M4 9.5V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.5"/><path d="M3 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 4 0 2.5 2.5 0 0 0 4 0 2.5 2.5 0 0 0 5 0"/><path d="M9 21v-5h6v5"/>',
       clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.4 2"/>',
       pin: '<path d="M20 10.4c0 5.4-8 12.1-8 12.1s-8-6.7-8-12.1a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10.2" r="2.9"/>',
-      phone: '<path d="M21 16.6v2.6a1.8 1.8 0 0 1-2 1.8 17.6 17.6 0 0 1-7.7-2.7 17.3 17.3 0 0 1-5.3-5.3A17.6 17.6 0 0 1 3.3 5.2 1.8 1.8 0 0 1 5.1 3.2h2.6a1.8 1.8 0 0 1 1.8 1.5c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L8.6 10.2a14 14 0 0 0 5.3 5.3l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6a1.8 1.8 0 0 1 1.6 1.9Z"/>',
       drop: '<path d="M12 2.7s6.2 6.4 6.2 10.6a6.2 6.2 0 1 1-12.4 0C5.8 9.1 12 2.7 12 2.7Z"/>',
       shield: '<path d="M12 2.5 20 5.5v6c0 4.7-3.4 8.6-8 10-4.6-1.4-8-5.3-8-10v-6Z"/><path d="m9 11.8 2.2 2.2L15.4 9.8"/>',
       refresh: '<path d="M20 11a8 8 0 0 0-14.9-3"/><polyline points="5 4 5 8 9 8"/><path d="M4 13a8 8 0 0 0 14.9 3"/><polyline points="19 20 19 16 15 16"/>',
@@ -315,7 +314,7 @@
             </div>
             <button type="button" class="button small" id="locate-btn">
               <svg class="locate-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-              <span data-locate-label>Use my current location</span>
+              <span data-locate-label>Locate me</span>
             </button>
           </div>
           <div class="location-map" id="location-map" aria-label="Map for setting your location"></div>
@@ -387,7 +386,7 @@
     async function initLocationMapCard(stations) {
       stationMapHandle = await AquaLocation.initLocationMap('location-map', {
         stations,
-        // Fires on map click and on marker drag - both already persisted.
+        // Fires after a deliberate map click; the location marker cannot be dragged.
         onChange: (record) => {
           renderLocationSummary(record);
           clearLocationNote();
@@ -486,7 +485,7 @@
             <div class="station-meta-strip">
               <div>
                 <small style="color:#64807b;display:block;">Standard Refill</small>
-                <strong>₱${s.pricePerGallon}.00 <small style="font-size:11px;font-weight:normal;">/ gallon</small></strong>
+                <strong>₱${s.pricePerGallon}.00 <small style="font-size:11px;font-weight:normal;">/ 5-gallon refill</small></strong>
               </div>
               <div style="text-align:right;">
                 <small style="color:#64807b;display:block;">Rating</small>
@@ -496,8 +495,8 @@
 
             <div class="station-badges">
               ${s.deliveryAvailable
-                ? `<span class="pill blue"><span class="pill-icon" aria-hidden="true">${uiIconSvg('truck')}</span>Delivery</span>`
-                : `<span class="pill slate"><span class="pill-icon" aria-hidden="true">${uiIconSvg('store')}</span>Pickup Only</span>`}
+                ? `<span class="pill blue"><span class="pill-icon" aria-hidden="true">${uiIconSvg('truck')}</span>PICKUP & DELIVERY</span>`
+                : `<span class="pill slate"><span class="pill-icon" aria-hidden="true">${uiIconSvg('store')}</span>PICKUP ONLY</span>`}
               <span class="pill slate"><span class="pill-icon" aria-hidden="true">${uiIconSvg('clock')}</span>${s.hours}</span>
             </div>
 
@@ -552,7 +551,6 @@
               <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;font-size:12px;color:#52706e;">
                 <span><strong>${station.distanceKm} km</strong> from your home</span>
                 <span>•</span>
-                <span class="detail-strip-inline"><span class="detail-strip-icon small" aria-hidden="true">${uiIconSvg('phone')}</span>${station.phone || '0918 962 5038'}</span>
                 ${station.deliveryCoverage ? `<span>•</span><span>Coverage: ${station.deliveryCoverage}</span>` : ''}
               </div>
             </div>
@@ -591,7 +589,7 @@
               <div>
                 <span style="color:#64807b;">Doorstep Delivery:</span>
                 <strong style="color:${station.deliveryAvailable ? 'var(--teal)' : '#64807b'};">
-                  ${station.deliveryAvailable ? `✓ Available (₱${station.deliveryFee !== undefined ? station.deliveryFee : 15}.00 fee)` : '✕ Pickup Only'}
+                  ${station.deliveryAvailable ? `PICKUP & DELIVERY (₱${Number(station.deliveryFee || 0).toFixed(2)} delivery fee)` : 'PICKUP ONLY'}
                 </strong>
               </div>
               <div>
@@ -696,12 +694,10 @@
       bottleExchange: 'swap', // swap | new
       bottleDepositFee: 0,
       fulfillment: 'delivery',
-      deliveryFee: 15,
       // Not user-editable: derived from `fulfillment` in paymentForFulfillment().
       paymentMethod: 'Cash on Delivery',
       deliveryAddress: 'Block 4, Lot 12, Sunrise Village, Brgy. San Jose',
       landmark: 'Near Yellow Chapel',
-      contactPhone: '+63 917 555 4321',
       notes: '',
       applyPointsVoucher: false
     };
@@ -857,7 +853,7 @@
                 ${view.list.length
                   ? view.list.map(s => `
                     <option value="${esc(s.id)}" ${s.id === selectedId ? 'selected' : ''}>
-                      ${s.id === view.nearestId ? '★ Nearest · ' : ''}${esc(s.name)} — ₱${s.pricePerGallon}/gal${s.deliveryAvailable ? ' · Delivery' : ''}${s.distanceKm !== undefined && s.distanceKm !== null ? ` · ${esc(formatAway(s.distanceKm))}` : ''}
+                      ${s.id === view.nearestId ? '★ Nearest · ' : ''}${esc(s.name)} — ₱${s.pricePerGallon}/5-gal refill${s.deliveryAvailable ? ' · Pickup & delivery' : ' · Pickup only'}${s.distanceKm !== undefined && s.distanceKm !== null ? ` · ${esc(formatAway(s.distanceKm))}` : ''}
                     </option>
                   `).join('')
                   : '<option value="">No stations available</option>'}
@@ -967,6 +963,10 @@
       if (presetStationId) orderFormState.stationId = presetStationId;
 
       const selectedStation = stations.find(s => s.id === orderFormState.stationId) || stations[0];
+      if (!selectedStation.deliveryAvailable && orderFormState.fulfillment === 'delivery') {
+        orderFormState.fulfillment = 'pickup';
+        orderFormState.paymentMethod = paymentForFulfillment('pickup');
+      }
       orderFormState.containerPrice = selectedStation.pricePerGallon;
 
       const isPickup = orderFormState.fulfillment === 'pickup';
@@ -1030,11 +1030,13 @@
               </div>
 
               <div class="container-option-grid">
-                <div class="container-option ${orderFormState.fulfillment === 'delivery' ? 'selected' : ''}" onclick="selectFulfillment('delivery')">
-                  <strong class="option-heading"><span class="option-icon" aria-hidden="true">${fulfillmentIconSvg('delivery')}</span>Doorstep Delivery</strong>
-                  <small>Delivered by station rider</small>
-                  <span class="opt-price">₱15.00 delivery fee</span>
-                </div>
+                ${selectedStation.deliveryAvailable ? `
+                  <div class="container-option ${orderFormState.fulfillment === 'delivery' ? 'selected' : ''}" onclick="selectFulfillment('delivery')">
+                    <strong class="option-heading"><span class="option-icon" aria-hidden="true">${fulfillmentIconSvg('delivery')}</span>Doorstep Delivery</strong>
+                    <small>Delivered by station rider</small>
+                    <span class="opt-price">₱${Number(selectedStation.deliveryFee || 0).toFixed(2)} delivery fee</span>
+                  </div>
+                ` : '<p class="field-hint">Delivery is unavailable at this station; pickup is available.</p>'}
                 <div class="container-option ${orderFormState.fulfillment === 'pickup' ? 'selected' : ''}" onclick="selectFulfillment('pickup')">
                   <strong class="option-heading"><span class="option-icon" aria-hidden="true">${fulfillmentIconSvg('pickup')}</span>Station Counter Pickup</strong>
                   <small>Ready at express counter</small>
@@ -1051,10 +1053,6 @@
                   <label for="order-landmark">Barangay / Landmark / Instructions</label>
                   <input type="text" id="order-landmark" value="${esc(orderFormState.landmark)}" placeholder="e.g. Beside Yellow Chapel, Blue Gate" oninput="orderFormState.landmark = this.value">
                 </div>
-                <div class="form-field">
-                  <label for="order-phone">Contact Mobile (for Rider SMS/Call)</label>
-                  <input type="text" id="order-phone" value="${esc(orderFormState.contactPhone)}" oninput="orderFormState.contactPhone = this.value">
-                </div>
               </div>
 
               <!-- Counter pickup: no address, no rider. Show where to go instead. -->
@@ -1063,12 +1061,7 @@
                   <span class="eyebrow">Collect your refill here</span>
                   <strong>${selectedStation.name}</strong>
                   <small>${selectedStation.address}</small>
-                  <small class="pickup-station-phone">${selectedStation.phone || 'Ask the counter for assistance'}</small>
                   <span class="pickup-hours">${selectedStation.hours || ''}</span>
-                </div>
-                <div class="form-field">
-                  <label for="order-pickup-phone">Contact Mobile (so the station can reach you)</label>
-                  <input type="text" id="order-pickup-phone" value="${esc(orderFormState.contactPhone)}" oninput="orderFormState.contactPhone = this.value">
                 </div>
               </div>
 
@@ -1143,7 +1136,11 @@
       }
 
       const depositFee = orderFormState.bottleExchange === 'new' ? (160 * orderFormState.quantity) : 0;
-      const deliveryFee = orderFormState.fulfillment === 'delivery' ? 15.00 : 0.00;
+      const deliveryFee = orderFormState.fulfillment === 'delivery' && station.deliveryAvailable
+        ? Number.isFinite(Number(station.deliveryFee)) && Number(station.deliveryFee) >= 0
+          ? Number(station.deliveryFee)
+          : 15.00
+        : 0.00;
       const total = Math.max(0, rawSubtotal - discount + depositFee + deliveryFee);
       const points = orderFormState.quantity * 10;
 
@@ -1238,6 +1235,10 @@
     }
 
     function selectFulfillment(mode) {
+      const station = orderStationsCache.find(candidate => candidate.id === orderFormState.stationId);
+      if (mode === 'delivery' && (!station || !station.deliveryAvailable)) {
+        return showToast('This station offers pickup only.');
+      }
       orderFormState.fulfillment = mode;
       // Payment follows fulfillment. Switching delivery <-> pickup must never
       // leave a method that is invalid for the new choice.
@@ -1251,7 +1252,6 @@
     }
 
     async function submitRefillOrder(stationId) {
-      const calc = calculateOrderTotals({ pricePerGallon: orderFormState.containerPrice });
       const isPickup = orderFormState.fulfillment === 'pickup';
       const station = await AquaDashboard.fetchStationById(stationId);
       // Never interpolate names into inline handlers; resolve them here.
@@ -1259,6 +1259,9 @@
 
       // Client-side guard. placeRefillOrder() re-checks this on the data, but
       // failing here gives the customer an immediate, readable message.
+      if (!isPickup && (!station || !station.deliveryAvailable)) {
+        return showToast('This station offers pickup only. Choose pickup to continue.');
+      }
       if (isPickup && orderFormState.paymentMethod !== AquaDashboard.PICKUP_PAYMENT_METHOD) {
         return showToast('Counter pickup must be paid at the station. Please try again.');
       }
@@ -1276,13 +1279,10 @@
         fulfillmentType: orderFormState.fulfillment,
         deliveryAddress: orderFormState.deliveryAddress,
         landmark: orderFormState.landmark,
-        contactPhone: orderFormState.contactPhone,
         notes: orderFormState.notes,
         paymentMethod: isPickup ? AquaDashboard.PICKUP_PAYMENT_METHOD : orderFormState.paymentMethod,
-        subtotal: calc.rawSubtotal,
-        discount: calc.discount,
-        deliveryFee: isPickup ? calc.depositFee : calc.deliveryFee + calc.depositFee,
-        total: calc.total
+        bottleExchange: orderFormState.bottleExchange,
+        applyPointsVoucher: orderFormState.applyPointsVoucher
       };
 
       let res;
@@ -1631,7 +1631,7 @@
         <form id="new-sub-form" onsubmit="submitNewSubscription(event)">
           <label>Select Station</label>
           <select id="sub-station" required style="margin-bottom:12px;">
-            ${stations.map(s => `<option value="${s.id}|${s.name}|${s.pricePerGallon}">${s.name} (₱${s.pricePerGallon}/gal)</option>`).join('')}
+            ${stations.map(s => `<option value="${s.id}|${s.name}|${s.pricePerGallon}">${s.name} (₱${s.pricePerGallon}/5-gal refill)</option>`).join('')}
           </select>
 
           <label>Refill Frequency</label>
@@ -1849,10 +1849,6 @@
                   <label>Email Address</label>
                   <input type="email" id="prof-email" value="${profile.email}" required>
                 </div>
-                <div style="margin-bottom:16px;">
-                  <label>Mobile Number (PH Format)</label>
-                  <input type="text" id="prof-phone" value="${profile.phone || '+63 917 555 4321'}" required>
-                </div>
                 <button class="button" type="submit">Save Changes</button>
               </form>
             </div>
@@ -1868,7 +1864,6 @@
                   </div>
                 `).join('')}
               </div>
-              <button class="button small outline" onclick="handleAddAddress()">+ Add New Delivery Address</button>
             </div>
           </div>
 
@@ -1898,7 +1893,6 @@
       const profile = {
         name: document.getElementById('prof-name').value.trim(),
         email: document.getElementById('prof-email').value.trim(),
-        phone: document.getElementById('prof-phone').value.trim(),
       };
       if (!profile.name || !profile.email) {
         showToast('Name and email are required.');
@@ -1931,28 +1925,6 @@
         showToast('Password updated.');
       } catch (error) {
         showToast(error.message || 'Could not update your password.');
-      }
-    }
-
-    async function handleAddAddress() {
-      const address = (prompt('Street address, barangay, city:') || '').trim();
-      if (!address) return;
-
-      try {
-        await AquaDashboard.updateAddress(address);
-        const user = await AquaAuth.getCurrentUser();
-        const existing = Array.isArray(user.savedAddresses) && user.savedAddresses.length
-          ? user.savedAddresses
-          : (AquaRoles.DEMO_ACCOUNTS.customer.savedAddresses || []);
-        const savedAddresses = [
-          { label: 'New Address', address, isDefault: true },
-          ...existing.map((entry) => ({ ...entry, isDefault: false })),
-        ];
-        AquaAuth.setCurrentUser({ ...user, savedAddresses });
-        showToast('Delivery address saved.');
-        renderProfile(document.getElementById('main-content'));
-      } catch (error) {
-        showToast(error.message || 'Could not save that address.');
       }
     }
 

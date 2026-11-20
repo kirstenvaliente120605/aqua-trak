@@ -87,7 +87,6 @@ function toStoredUser(user) {
     station: user.station || "",
     stationId: user.stationId || "",
     permissions: user.permissions || (user.role === "staff" ? ["orders", "inventory", "requests"] : []),
-    phone: user.phone || "",
     location: user.location || "",
     status: user.status || "active",
     createdAt: new Date().toISOString(),
@@ -151,7 +150,7 @@ export function updateUserProfile(id, changes) {
   if (!name || name.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid name and email address." };
   const duplicate = users.find((candidate) => candidate.id !== id && candidate.email === email);
   if (duplicate) return { error: "That email address is already in use." };
-  Object.assign(user, { name, email, phone: String(changes.phone || "").trim().slice(0, 40), location: String(changes.location || "").trim().slice(0, 120) });
+  Object.assign(user, { name, email, location: String(changes.location || "").trim().slice(0, 120) });
   writeJson(usersFile, users);
   const { passwordHash, ...safeUser } = user;
   return safeUser;

@@ -20,22 +20,22 @@ $customerRow = 'cus-demo-001';
 $staffRow   = 'stf-demo-001';
 
 $users = [
-    ['customer.demo@example.com', 'CustomerDemo123!', 'customer', 'Mia Santos', '0917 000 0001'],
-    ['owner.demo@example.com', 'OwnerDemo123!', 'owner', 'Joan Dela Cruz', '0917 000 0002'],
-    ['staff.demo@example.com', 'StaffDemo123!', 'staff', 'Dani Cruz', '0917 000 0003'],
+    ['customer.demo@example.com', 'CustomerDemo123!', 'customer', 'Mia Santos'],
+    ['owner.demo@example.com', 'OwnerDemo123!', 'owner', 'Joan Dela Cruz'],
+    ['staff.demo@example.com', 'StaffDemo123!', 'staff', 'Dani Cruz'],
 ];
 
 $columns = array_fill_keys(array_column(Database::all('SHOW COLUMNS FROM user'), 'Field'), true);
 $hasStatus = isset($columns['status']);
 
 $stations = [
-    ["DRINK n' REFILL Purified Water Refilling Station", '45 Sabellano St, San Jose District, Pagadian City', 35, 7.827330, 123.444185],
-    ['Ultra Pure Water Refilling Station', 'Purok Bakhaw A, Brgy. Kawit, Pagadian City', 30, 7.831200, 123.443700],
-    ['Waterpol Water Refilling Station', 'Purok Pagang, Brgy. Kawit, Pagadian City', 35, 7.834700, 123.448100],
-    ['PG Aquamaster Water Refilling Station', 'Purok Makugihon, Brgy. Bulatok, Pagadian City', 30, 7.819800, 123.429700],
-    ["Aqua'Ter SMN Water Refilling Station", 'Beside DXPR Radio, San Jose District, Pagadian City', 25, 7.819100, 123.441200],
-    ['PH2O Water Refilling Station', 'Warlito Pulmones St, Santiago District, Pagadian City', 30, 7.836200, 123.426400],
-    ['Alka Water Refilling Station', 'Zone 11, Alta Tierra Subdivision, Tiguma, Pagadian City', 35, 7.840580, 123.463360],
+    ["DRINK n' REFILL Purified Water Refilling Station", '45 Sabellano St, San Jose District, Pagadian City', 35, 7.827330, 123.444185, true, 15],
+    ['Ultra Pure Water Refilling Station', 'Purok Bakhaw A, Brgy. Kawit, Pagadian City', 30, 7.831200, 123.443700, false, 0],
+    ['Waterpol Water Refilling Station', 'Purok Pagang, Brgy. Kawit, Pagadian City', 35, 7.834700, 123.448100, true, 15],
+    ['PG Aquamaster Water Refilling Station', 'Purok Makugihon, Brgy. Bulatok, Pagadian City', 30, 7.819800, 123.429700, false, 0],
+    ["Aqua'Ter SMN Water Refilling Station", 'Beside DXPR Radio, San Jose District, Pagadian City', 25, 7.819100, 123.441200, true, 15],
+    ['PH2O Water Refilling Station', 'Warlito Pulmones St, Santiago District, Pagadian City', 30, 7.836200, 123.426400, false, 0],
+    ['Alka Water Refilling Station', 'Zone 11, Alta Tierra Subdivision, Tiguma, Pagadian City', 35, 7.840580, 123.463360, true, 15],
 ];
 
 $rewards = [
@@ -50,7 +50,7 @@ $pdo->beginTransaction();
 
 try {
     $userIds = [];
-    foreach ($users as [$email, $password, $role, $name, $phone]) {
+    foreach ($users as [$email, $password, $role, $name]) {
         $id = Database::scalar('SELECT id FROM user WHERE email = ? LIMIT 1', [$email]);
         if ($id === null) {
             $id = Database::nextReadableId('users');
@@ -58,28 +58,26 @@ try {
         $status = $role === 'staff' ? 'active' : 'active';
         if ($hasStatus) {
             Database::run(
-                'INSERT INTO user (id, email, password_hash, role, full_name, phone, remember_me, status)
-                 VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+                'INSERT INTO user (id, email, password_hash, role, full_name, status)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                     email = VALUES(email),
                     password_hash = VALUES(password_hash),
                     role = VALUES(role),
                     full_name = VALUES(full_name),
-                    phone = VALUES(phone),
                     status = VALUES(status)',
-                [$id, $email, password_hash($password, PASSWORD_DEFAULT), $role, $name, $phone, $status]
+                [$id, $email, password_hash($password, PASSWORD_DEFAULT), $role, $name, $status]
             );
         } else {
             Database::run(
-                'INSERT INTO user (id, email, password_hash, role, full_name, phone, remember_me)
-                 VALUES (?, ?, ?, ?, ?, ?, 0)
+                'INSERT INTO user (id, email, password_hash, role, full_name)
+                 VALUES (?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                     email = VALUES(email),
                     password_hash = VALUES(password_hash),
                     role = VALUES(role),
-                    full_name = VALUES(full_name),
-                    phone = VALUES(phone)',
-                [$id, $email, password_hash($password, PASSWORD_DEFAULT), $role, $name, $phone]
+                    full_name = VALUES(full_name)',
+                [$id, $email, password_hash($password, PASSWORD_DEFAULT), $role, $name]
             );
         }
         $userIds[$email] = (string) $id;
@@ -95,27 +93,28 @@ try {
     }
 
     Database::run(
-        'INSERT INTO customer (id, user_id, default_address, aqua_points)
-         VALUES (?, ?, ?, 240)
+        'INSERT INTO customer (id, user_id, aqua_points)
+         VALUES (?, ?, 240)
          ON DUPLICATE KEY UPDATE aqua_points = VALUES(aqua_points)',
-        [$customerRow, $customerUser, '45 Sabellano St, San Jose District, Pagadian City']
+        [$customerRow, $customerUser]
     );
 
+    $ownerNameColumn = Database::stationOwnerNameColumn();
     Database::run(
-        'INSERT INTO station_owner (id, user_id, owner_name)
+        "INSERT INTO station_owner (id, user_id, `$ownerNameColumn`)
          VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE owner_name = VALUES(owner_name)',
+         ON DUPLICATE KEY UPDATE `$ownerNameColumn` = VALUES(`$ownerNameColumn`)",
         [$ownerRow, $ownerUser, $ownerName]
     );
 
     $mainStationId = null;
-    foreach ($stations as [$name, $address, $price, $lat, $lng]) {
+    foreach ($stations as [$name, $address, $price, $lat, $lng, $delivery, $deliveryFee]) {
         $id = Database::scalar('SELECT id FROM station WHERE name = ? ORDER BY id ASC LIMIT 1', [$name]);
         if ($id === null) {
             $id = Database::nextReadableId('stations');
             Database::run(
-                'INSERT INTO station (id, owner_id, name, address, lat, lng, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [$id, $ownerRow, $name, $address, $lat, $lng, 'open']
+                'INSERT INTO station (id, owner_id, name, address, lat, lng, status, delivery, delivery_fee) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$id, $ownerRow, $name, $address, $lat, $lng, 'open', (int) $delivery, $deliveryFee]
             );
         } else {
             Database::run('UPDATE station SET lat = ?, lng = ? WHERE id = ?', [$lat, $lng, $id]);
@@ -175,7 +174,7 @@ try {
 
     Database::run(
         'UPDATE station SET operating_hours = ? WHERE id = ?',
-        [json_encode(['hours' => 'Mon-Sat 7:30 AM-5:00 PM', 'contact' => '0918 962 5038']), $mainStationId]
+        [json_encode(['hours' => 'Mon-Sat 7:30 AM-5:00 PM']), $mainStationId]
     );
 
     $promotions = [
@@ -192,32 +191,46 @@ try {
         );
     }
 
-    if (isset($columns['station'], $columns['station_id'])) {
+    if (isset($columns['station_id'])) {
+        // Station name (014: renamed from `subtitle`) always mirrors the row in
+        // STATION that station_id points at. STAFF start unassigned (`''`).
+        $stationNameSet = isset($columns['station']) ? ', u.station = s.name' : '';
         Database::run(
-            "UPDATE user SET station = ?, station_id = ? WHERE id IN (?, ?)",
-            ["DRINK n' REFILL Purified Water Refilling Station", $mainStationId, $ownerUser, $staffUser]
+            "UPDATE user u JOIN station s ON s.id = ?
+                SET u.station_id = s.id$stationNameSet
+              WHERE u.id IN (?, ?)",
+            [$mainStationId, $ownerUser, $staffUser]
         );
     }
 
+    // Permissions live on the STAFF row (015), where the station and approver are.
+    $staffColumns = array_fill_keys(array_column(Database::all('SHOW COLUMNS FROM staff'), 'Field'), true);
+    $hasStaffPermissions = isset($staffColumns['permissions']);
+    $staffParams = [$staffRow, $staffUser, $mainStationId, $ownerUser, 'active'];
+    if ($hasStaffPermissions) {
+        $staffParams[] = json_encode(['orders', 'inventory', 'requests'], JSON_UNESCAPED_SLASHES);
+    }
     Database::run(
-        'INSERT INTO staff (id, user_id, station_id, approved_by, status)
-         VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), approved_by = VALUES(approved_by), status = VALUES(status)',
-        [$staffRow, $staffUser, $mainStationId, $ownerUser, 'active']
+        'INSERT INTO staff (id, user_id, station_id, approved_by, status' . ($hasStaffPermissions ? ', permissions' : '') . ")
+         VALUES (?, ?, ?, ?, ?" . ($hasStaffPermissions ? ', ?' : '') . ")
+         ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), approved_by = VALUES(approved_by),
+            status = VALUES(status)" . ($hasStaffPermissions ? ', permissions = VALUES(permissions)' : ''),
+        $staffParams
     );
 
     foreach ($rewards as [$id, $name, $category, $points, $code, $description]) {
         Database::run(
-            'INSERT INTO reward (id, owner_id, name, required_purchases, reward_description, status, code, points_cost, category)
-             VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)
+            'INSERT INTO reward (id, owner_id, name, reward_description, status, code, points_cost, category)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
+                owner_id = VALUES(owner_id),
                 name = VALUES(name),
                 reward_description = VALUES(reward_description),
                 status = VALUES(status),
                 code = VALUES(code),
                 points_cost = VALUES(points_cost),
                 category = VALUES(category)',
-            [$id, $ownerRow, $name, $description, 'active', $code, $points, $category]
+            [$id, null, $name, $description, 'active', $code, $points, $category]
         );
     }
 

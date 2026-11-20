@@ -123,13 +123,13 @@
       name: userData.name || "AquaTracker Member",
       email,
       password: userData.password,
-      subtitle:
+      station:
         userData.role === "owner"
           ? userData.station || "Station Owner"
-          : "Customer Account",
-      station: userData.station || "",
+          : userData.role === "staff"
+            ? ""
+            : "Customer Account",
       stationId: userData.stationId || "",
-      phone: userData.phone || "",
       address: userData.address || "",
       points: userData.role === "customer" ? 50 : 0,
       status: userData.role === "staff" ? "pending" : "active",
@@ -250,7 +250,6 @@
         reviewsCount: 142,
         pricePerGallon: 35,
         hours: "Mon-Sat 7:30 AM-5:00 PM",
-        phone: "0918 962 5038",
         waterTypes: ["Purified", "Alkaline (+P10)"],
         deliveryAvailable: true,
         pickupAvailable: true,
@@ -267,7 +266,6 @@
         reviewsCount: 88,
         pricePerGallon: 30,
         hours: "Mon-Sun 8:00 AM-6:00 PM",
-        phone: "0970 488 8866",
         waterTypes: ["Purified"],
         deliveryAvailable: false,
         pickupAvailable: true,
@@ -284,7 +282,6 @@
         reviewsCount: 116,
         pricePerGallon: 35,
         hours: "Mon-Sat 7:00 AM-6:30 PM",
-        phone: "0927 251 4246",
         waterTypes: ["Purified", "Mineral"],
         deliveryAvailable: true,
         pickupAvailable: true,
@@ -311,7 +308,6 @@
         fulfillment: "delivery",
         deliveryAddress: "Block 4, Lot 12, Sunrise Village, Brgy. San Jose",
         landmark: "Near Yellow Chapel",
-        contactPhone: "0917 555 4321",
         paymentMethod: "Cash on Delivery",
         subtotal: 70,
         discount: 0,
@@ -363,7 +359,6 @@
         fulfillment: "pickup",
         deliveryAddress: "Station Pickup Counter",
         landmark: "",
-        contactPhone: "0917 555 4321",
         paymentMethod: "Cash on Delivery",
         subtotal: 140,
         discount: 14,
@@ -568,8 +563,6 @@
         id: "drink-refill",
         name: "ClearSpring Water Hub",
         address: "45 Sabellano St, San Jose District, Pagadian City",
-        phone: "0918 962 5038",
-        contact: "0918 962 5038",
         hours: "Mon-Sat 7:30 AM-5:00 PM",
         ownerId: "usr-own-001",
       },

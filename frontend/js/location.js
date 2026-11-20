@@ -2,7 +2,7 @@
  * AquaTracker location module.
  *
  * Owns the single customer location point: a one-shot browser geolocation
- * read triggered only by an explicit button press, plus manual pin/drag on a
+ * read triggered only by an explicit button press, plus manual pin placement on a
  * plain Leaflet map. The point is persisted locally and reused to rank the
  * nearest water refilling stations.
  *
@@ -258,10 +258,10 @@
   // -------------------------------------------------------------
 
   const USER_ICON_SVG =
-    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+    '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
   const STATION_ICON_SVG =
-    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s6 6.2 6 10.4a6 6 0 0 1-12 0C6 8.9 12 2.7 12 2.7z"/></svg>';
+    '<svg viewBox="0 0 24 24" width="16.5" height="16.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s6 6.2 6 10.4a6 6 0 0 1-12 0C6 8.9 12 2.7 12 2.7z"/></svg>';
 
   function makeDivIcon(L, svg, { size = 34, ring = "#0b7d80" } = {}) {
     // divIcon avoids Leaflet's default marker sprites, whose image paths are
@@ -271,7 +271,66 @@
       html: `<span class="aq-map-pin" style="width:${size}px;height:${size}px;background:${ring};box-shadow:0 4px 12px rgba(7,59,76,.35)">${svg}</span>`,
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2],
+      popupAnchor: [0, -size / 2],
     });
+  }
+
+  function escapePopupText(value) {
+    if (value === null || value === undefined) return "";
+    const text = String(value).trim();
+    if (!text || /^(undefined|null)$/i.test(text)) return "";
+    return text.replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[char]));
+  }
+
+  function buildStationPopup(station) {
+    const name = escapePopupText(station.name);
+    const address = escapePopupText(station.address);
+    const hours = escapePopupText(station.hours);
+    const stationId = escapePopupText(station.id);
+    const status = escapePopupText(station.status).toLowerCase();
+    const statusKnown = Boolean(status);
+    const explicitlyUnavailable = ["closed", "inactive", "disabled", "maintenance", "paused", "suspended", "pending", "deleted", "archived", "0", "false"].includes(status);
+    // The public station list is orderable unless it explicitly says otherwise.
+    const isOpen = !statusKnown || !explicitlyUnavailable;
+    const isClosed = ["closed", "inactive", "paused", "suspended"].includes(status);
+    const available = isOpen && Boolean(stationId);
+    const price = Number(station.pricePerGallon);
+    const hasPrice =
+      station.pricePerGallon !== null &&
+      station.pricePerGallon !== undefined &&
+      String(station.pricePerGallon).trim() !== "" &&
+      Number.isFinite(price) &&
+      price > 0;
+    const fields = [
+      address && `<p class="station-popup-field"><strong>Address</strong> ${address}</p>`,
+      hasPrice &&
+        `<p class="station-popup-field"><strong>Price</strong> ₱${price.toFixed(2)} / 5-gallon refill</p>`,
+      hours && `<p class="station-popup-field"><strong>Hours</strong> ${hours}</p>`,
+    ].filter(Boolean).join("");
+    const statusBadge = statusKnown
+      ? `<span class="station-popup-status ${isOpen ? "station-popup-status-open" : "station-popup-status-closed"}">${isOpen ? "Open" : (isClosed ? "Closed" : "Unavailable")}</span>`
+      : `<span class="station-popup-status station-popup-status-closed">${isOpen ? "Open" : "Unavailable"}</span>`;
+    const reason = !stationId
+      ? "This station is unavailable for ordering."
+      : isOpen
+        ? ""
+        : isClosed
+          ? "This station is currently closed."
+          : "This station is currently unavailable for orders.";
+
+    return `<div class="station-popup-content">
+      ${name ? `<strong class="station-popup-title">${name}</strong>` : ""}
+      ${statusBadge}
+      <div class="station-popup-fields">${fields}</div>
+      <button class="station-popup-order" type="button" data-station-popup-order data-station-id="${stationId}"${available ? "" : " disabled"}>Order Water</button>
+      ${reason ? `<p class="station-popup-reason">${reason}</p>` : ""}
+    </div>`;
   }
 
   /** Tears down the map built by a previous render, if any. */
@@ -291,7 +350,7 @@
    * Builds the interactive map inside containerId.
    *
    * Restores the saved point when there is one, otherwise centres on Pagadian
-   * City. Clicking the map or dragging the marker saves a new point.
+   * City. Clicking the map saves a new point; the marker itself is fixed.
    * options.onChange(record) fires whenever the point changes.
    */
   async function initLocationMap(containerId, options = {}) {
@@ -328,27 +387,65 @@
     L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map);
 
     const marker = L.marker([start.lat, start.lng], {
-      icon: makeDivIcon(L, USER_ICON_SVG, { size: 34, ring: "#0b7d80" }),
-      draggable: true,
+      icon: makeDivIcon(L, USER_ICON_SVG, { size: 43, ring: "#0b7d80" }),
+      draggable: false,
       keyboard: true,
       title: "Your location",
-      autoPan: true,
     }).addTo(map);
 
     const stationLayer = L.layerGroup().addTo(map);
+    const stationMarkers = new Map();
     if (Array.isArray(options.stations)) renderStationPins(options.stations);
 
     function renderStationPins(stations) {
-      stationLayer.clearLayers();
+      const activeStationIds = new Set();
       stations.forEach((station) => {
-        if (!isValidPoint(station.coords)) return;
-        L.marker([Number(station.coords.lat), Number(station.coords.lng)], {
-          icon: makeDivIcon(L, STATION_ICON_SVG, { size: 26, ring: "#e67e22" }),
-          title: station.name,
-          keyboard: false,
-        })
-          .bindTooltip(station.name, { direction: "top", offset: [0, -12] })
-          .addTo(stationLayer);
+        if (!isValidPoint(station.coords) || station.id === null || station.id === undefined) return;
+        const stationId = String(station.id);
+        const coordinates = [Number(station.coords.lat), Number(station.coords.lng)];
+        const tooltipName = escapePopupText(station.name);
+        let stationMarker = stationMarkers.get(stationId);
+        if (!stationMarker) {
+          stationMarker = L.marker(coordinates, {
+            icon: makeDivIcon(L, STATION_ICON_SVG, { size: 33, ring: "#e67e22" }),
+            title: station.name,
+            keyboard: false,
+          })
+            .bindTooltip(tooltipName, {
+              direction: "top",
+              offset: [0, -15],
+            });
+          stationMarker
+            .bindPopup(buildStationPopup(station))
+            .on("popupopen", (event) => {
+              const button = event.popup
+                .getElement()
+                .querySelector("[data-station-popup-order]");
+              if (!button || button.disabled || button.dataset.bound === "true") return;
+              button.dataset.bound = "true";
+              button.addEventListener("click", () => {
+                const popupStationId = button.dataset.stationId;
+                if (popupStationId && typeof global.switchSection === "function") {
+                  global.switchSection("order-refills", popupStationId);
+                }
+              });
+            });
+          stationMarkers.set(stationId, stationMarker);
+        } else {
+          stationMarker.setLatLng(coordinates);
+          stationMarker.setTooltipContent(tooltipName);
+          stationMarker.setPopupContent(buildStationPopup(station));
+          stationMarker.options.title = station.name;
+          if (stationMarker.getElement()) stationMarker.getElement().title = station.name || "";
+        }
+        if (!stationLayer.hasLayer(stationMarker)) stationMarker.addTo(stationLayer);
+        activeStationIds.add(stationId);
+      });
+
+      stationMarkers.forEach((stationMarker, stationId) => {
+        if (activeStationIds.has(stationId)) return;
+        stationLayer.removeLayer(stationMarker);
+        stationMarkers.delete(stationId);
       });
     }
 
@@ -384,11 +481,6 @@
     map.on("click", (event) => {
       const { lat, lng } = event.latlng;
       marker.setLatLng([lat, lng]);
-      commit({ lat, lng, label: "Pinned on map" });
-    });
-
-    marker.on("dragend", () => {
-      const { lat, lng } = marker.getLatLng();
       commit({ lat, lng, label: "Pinned on map" });
     });
 

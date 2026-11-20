@@ -15,6 +15,29 @@ CREATE DATABASE IF NOT EXISTS `aquatracker`
 USE `aquatracker`;
 
 -- ---------------------------------------------------------------------------
+-- Stations are created before users because the account assignment uses a
+-- station_id foreign key.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `stations` (
+  `id`                VARCHAR(64)   NOT NULL,
+  `name`              VARCHAR(190)  NOT NULL,
+  `area`              VARCHAR(190)  NOT NULL DEFAULT '',
+  `address`           VARCHAR(255)  NOT NULL DEFAULT '',
+  `phone`             VARCHAR(40)   NOT NULL DEFAULT '',
+  `hours`             VARCHAR(120)  NOT NULL DEFAULT '',
+  `lat`               DECIMAL(10,7) NULL,
+  `lng`               DECIMAL(10,7) NULL,
+  `price_per_gallon`  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `delivery`          TINYINT(1)    NOT NULL DEFAULT 0,
+  `delivery_fee`      DECIMAL(10,2) NOT NULL DEFAULT 15.00,
+  `rating`            DECIMAL(2,1)  NOT NULL DEFAULT 0.0,
+  `status`            VARCHAR(32)   NOT NULL DEFAULT 'open',
+  `created_at`        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_stations_coords` (`lat`,`lng`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
 -- Accounts. `status` drives the owner staff-approval workflow:
 -- active | pending | rejected.
 -- ---------------------------------------------------------------------------
@@ -22,21 +45,60 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id`            CHAR(36)     NOT NULL,
   `email`         VARCHAR(190) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `name`          VARCHAR(100) NOT NULL,
+  `email_verified` TINYINT(1) NOT NULL DEFAULT 1,
+  `auth_version` INT UNSIGNED NOT NULL DEFAULT 1,
+  `full_name`     VARCHAR(100) NOT NULL,
   `role`          ENUM('customer','owner','staff') NOT NULL,
   `subtitle`      VARCHAR(190) NOT NULL DEFAULT '',
-  `station`       VARCHAR(190) NOT NULL DEFAULT '',
-  `station_id`    VARCHAR(64)  NOT NULL DEFAULT '',
+  `station_id`    VARCHAR(64)  NULL DEFAULT NULL,
   `permissions`   TEXT         NULL,
   `phone`         VARCHAR(40)  NOT NULL DEFAULT '',
-  `location`      VARCHAR(120) NOT NULL DEFAULT '',
   `status`        ENUM('active','pending','rejected') NOT NULL DEFAULT 'active',
-  `reviewed_at`   DATETIME     NULL,
   `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_email` (`email`),
   KEY `ix_users_role_status` (`role`,`status`),
-  KEY `ix_users_station` (`station`)
+  KEY `ix_users_station_id` (`station_id`),
+  CONSTRAINT `fk_users_station_id` FOREIGN KEY (`station_id`)
+    REFERENCES `stations` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `node_email_otps` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(190) NOT NULL,
+  `user_id` CHAR(36) NOT NULL,
+  `code_hash` VARCHAR(255) NOT NULL,
+  `purpose` ENUM('verify_email','reset_password') NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `used_at` DATETIME NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_node_email_otps_email_purpose` (`email`,`purpose`,`id`),
+  KEY `ix_node_email_otps_expiry` (`expires_at`),
+  CONSTRAINT `fk_node_email_otps_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `node_otp_rate_limits` (
+  `scope` VARCHAR(8) NOT NULL,
+  `key_hash` CHAR(64) NOT NULL,
+  `action` VARCHAR(32) NOT NULL,
+  `window_started_at` DATETIME NOT NULL,
+  `request_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`scope`,`key_hash`,`action`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `node_password_reset_tokens` (
+  `token_hash` CHAR(64) NOT NULL,
+  `email` VARCHAR(190) NOT NULL,
+  `user_id` CHAR(36) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `used_at` DATETIME NULL,
+  PRIMARY KEY (`token_hash`),
+  KEY `ix_node_reset_tokens_user` (`user_id`),
+  KEY `ix_node_reset_tokens_expiry` (`expires_at`),
+  CONSTRAINT `fk_node_reset_tokens_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
@@ -55,27 +117,6 @@ CREATE TABLE IF NOT EXISTS `sessions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- Stations. lat/lng drive the nearest-station filter in Step 1 of the order
--- flow, so they are part of the real schema now rather than frontend seed data.
--- `alka` has no coordinates yet; the proximity filter skips it by design.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `stations` (
-  `id`                VARCHAR(64)   NOT NULL,
-  `name`              VARCHAR(190)  NOT NULL,
-  `area`              VARCHAR(190)  NOT NULL DEFAULT '',
-  `address`           VARCHAR(255)  NOT NULL DEFAULT '',
-  `phone`             VARCHAR(40)   NOT NULL DEFAULT '',
-  `hours`             VARCHAR(120)  NOT NULL DEFAULT '',
-  `lat`               DECIMAL(10,7) NULL,
-  `lng`               DECIMAL(10,7) NULL,
-  `price_per_gallon`  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  `delivery`          TINYINT(1)    NOT NULL DEFAULT 0,
-  `rating`            DECIMAL(2,1)  NOT NULL DEFAULT 0.0,
-  `created_at`        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `ix_stations_coords` (`lat`,`lng`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- ---------------------------------------------------------------------------
 -- Orders. Customer-facing rows start at status 'New order'; the station and
 -- owner views normalise that to 'New' on read, matching the Node backend.
@@ -252,7 +293,7 @@ CREATE TABLE IF NOT EXISTS `station_pricing` (
 -- ---------------------------------------------------------------------------
 -- Station catalogue seed. Prices, delivery flags and areas match
 -- backend/src/services/commerceStore.js stationCatalog; coordinates, addresses,
--- phone numbers, opening hours and ratings match the frontend's DEFAULT_STATIONS
+-- opening hours and ratings match the frontend's DEFAULT_STATIONS
 -- seed in frontend/js/dashboard.js.
 --
 -- This is an UPSERT, not a plain INSERT IGNORE, so re-running /install repairs
@@ -263,30 +304,30 @@ CREATE TABLE IF NOT EXISTS `station_pricing` (
 -- them, and an empty table simply means "use the defaults in PHP".
 --
 -- `alka` has no frontend fixture anywhere in the repo, so its address repeats its
--- area and its phone, hours and rating are left empty. Rating 0 therefore means
+-- area, hours and rating are left empty. Rating 0 therefore means
 -- "not yet rated", not "rated zero stars"; the station finder sorts and filters
 -- on rating, so an unrated station simply drops out of a "top rated" filter
 -- rather than outranking anything.
 -- ---------------------------------------------------------------------------
 INSERT INTO `stations`
-  (`id`, `name`, `area`, `address`, `phone`, `hours`, `rating`, `price_per_gallon`, `delivery`, `lat`, `lng`)
+  (`id`, `name`, `area`, `address`, `hours`, `rating`, `price_per_gallon`, `delivery`, `delivery_fee`, `lat`, `lng`)
 VALUES
-  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    '0918 962 5038', 'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 7.8273300, 123.4441850),
-  ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit',                            'Purok Bakhaw A, Brgy. Kawit, Pagadian City',          '0970 488 8866', 'Mon-Sun 8:00 AM-6:00 PM',   4.7, 30, 0, 7.8312000, 123.4437000),
-  ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit',                              'Purok Pagang, Brgy. Kawit, Pagadian City',             '0927 251 4246', 'Mon-Sat 7:00 AM-6:30 PM',   4.8, 35, 1, 7.8347000, 123.4481000),
-  ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok',                        'Purok Makugihon, Brgy. Bulatok, Pagadian City',        '0951 312 5308', 'Mon-Sat 8:00 AM-5:00 PM',   4.6, 30, 0, 7.8198000, 123.4297000),
-  ('aquater',       'Aqua''Ter SMN Water Refilling Station',            'Beside DXPR, San Jose District',                         'Beside DXPR Radio, San Jose District, Pagadian City',  '0975 462 7620', 'Mon-Sun 6:30 AM-7:00 PM',   4.9, 25, 1, 7.8191000, 123.4412000),
-  ('ph2o',          'PH2O Water Refilling Station',                      'Warlito Pulmones St, Santiago District',                 'Warlito Pulmones St, Santiago District, Pagadian City','0985 337 4448', '24/7 Automated Vendo & Counter', 4.8, 30, 0, 7.8362000, 123.4264000),
-  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',              '',                            0.0, 35, 1, 7.8405800, 123.4633600)
+  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 15, 7.8273300, 123.4441850),
+  ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit',                            'Purok Bakhaw A, Brgy. Kawit, Pagadian City',          'Mon-Sun 8:00 AM-6:00 PM',   4.7, 30, 0, 0, 7.8312000, 123.4437000),
+  ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit',                              'Purok Pagang, Brgy. Kawit, Pagadian City',             'Mon-Sat 7:00 AM-6:30 PM',  4.8, 35, 1, 15, 7.8347000, 123.4481000),
+  ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok',                        'Purok Makugihon, Brgy. Bulatok, Pagadian City',        'Mon-Sat 8:00 AM-5:00 PM',  4.6, 30, 0, 0, 7.8198000, 123.4297000),
+  ('aquater',       'Aqua''Ter SMN Water Refilling Station',            'Beside DXPR, San Jose District',                         'Beside DXPR Radio, San Jose District, Pagadian City',  'Mon-Sun 6:30 AM-7:00 PM',  4.9, 25, 1, 15, 7.8191000, 123.4412000),
+  ('ph2o',          'PH2O Water Refilling Station',                      'Warlito Pulmones St, Santiago District',                 'Warlito Pulmones St, Santiago District, Pagadian City','24/7 Automated Vendo & Counter', 4.8, 30, 0, 0, 7.8362000, 123.4264000),
+  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',                            0.0, 35, 1, 15, 7.8405800, 123.4633600)
 ON DUPLICATE KEY UPDATE
   `name`             = VALUES(`name`),
   `area`             = VALUES(`area`),
   `address`          = VALUES(`address`),
-  `phone`            = VALUES(`phone`),
   `hours`            = VALUES(`hours`),
   `rating`           = VALUES(`rating`),
   `price_per_gallon` = VALUES(`price_per_gallon`),
   `delivery`         = VALUES(`delivery`),
+  `delivery_fee`     = VALUES(`delivery_fee`),
   `lat`              = VALUES(`lat`),
   `lng`              = VALUES(`lng`);
 

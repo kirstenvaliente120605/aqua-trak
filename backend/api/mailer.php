@@ -1,89 +1,96 @@
 <?php
-/** Brevo transactional email helper. Credentials come from the server environment. */
 
 declare(strict_types=1);
 
 namespace AquaTracker;
 
-/** Send the post-registration greeting to the account owner. */
-function sendWelcomeEmail(string $userEmail, string $userName, string $role = 'customer'): void
+/**
+ * Sends an OTP using the Brevo transactional email API.
+ *
+ * @param array{to:string,code:string,purpose:string} $message
+ */
+function sendOtpEmail(array $message): void
 {
     $apiKey = trim((string) getenv('BREVO_API_KEY'));
     $senderEmail = trim((string) getenv('BREVO_SENDER_EMAIL'));
+    $senderName = trim((string) getenv('BREVO_SENDER_NAME')) ?: 'AquaTracker';
     if ($apiKey === '' || $senderEmail === '') {
-        throw new \RuntimeException('Brevo is not configured in the server environment.');
+        error_log('Brevo OTP email not sent: missing server configuration.');
+        throw new \RuntimeException('OTP email could not be sent.');
     }
-    if (!filter_var($senderEmail, FILTER_VALIDATE_EMAIL)) {
-        throw new \RuntimeException('BREVO_SENDER_EMAIL must be a valid verified sender address.');
+    if (!filter_var($senderEmail, FILTER_VALIDATE_EMAIL) || !filter_var($message['to'] ?? '', FILTER_VALIDATE_EMAIL)) {
+        error_log('Brevo OTP email not sent: invalid sender or recipient address.');
+        throw new \RuntimeException('OTP email could not be sent.');
     }
     if (!extension_loaded('curl')) {
-        throw new \RuntimeException('The PHP cURL extension is required to send email through Brevo.');
+        error_log('Brevo OTP email not sent: PHP cURL extension is unavailable.');
+        throw new \RuntimeException('OTP email could not be sent.');
     }
 
-    $greetingName = trim($userName) !== '' ? trim($userName) : $userEmail;
-    $safeName = htmlspecialchars($greetingName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $safeEmail = htmlspecialchars($userEmail, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $loginRole = in_array($role, ['customer', 'owner', 'staff'], true) ? $role : 'customer';
-    $publicUrl = rtrim(trim((string) getenv('AQ_PUBLIC_URL')) ?: 'http://localhost:8080', '/');
-    $loginUrl = htmlspecialchars($publicUrl . '/auth/' . rawurlencode($loginRole) . '/login', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $year = date('Y');
-    $htmlContent = <<<HTML
-<!DOCTYPE html>
+    $purpose = (string) ($message['purpose'] ?? '');
+    if (!in_array($purpose, ['verify_email', 'reset_password'], true) || preg_match('/^\d{6}$/', (string) ($message['code'] ?? '')) !== 1) {
+        error_log('Brevo OTP email not sent: invalid mail parameters.');
+        throw new \RuntimeException('OTP email could not be sent.');
+    }
+
+    $configuredExpiry = filter_var(getenv('OTP_EXPIRY_MINUTES'), FILTER_VALIDATE_INT);
+    $expiryMinutes = $configuredExpiry !== false && $configuredExpiry > 0
+        ? min(60, $configuredExpiry)
+        : 10;
+    $code = htmlspecialchars((string) $message['code'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $heading = $purpose === 'verify_email' ? 'Verify your email' : 'Reset your password';
+    $subject = $purpose === 'verify_email'
+        ? 'Your verification code: ' . $code
+        : 'Your password reset code: ' . $code;
+    $action = $purpose === 'verify_email'
+        ? 'verify your AquaTracker email address'
+        : 'reset your AquaTracker password';
+    $plain = $purpose === 'verify_email'
+        ? "Your AquaTracker verification code is {$code}. It expires in {$expiryMinutes} minutes. If you didn't request this, ignore this email."
+        : "Your AquaTracker password reset code is {$code}. It expires in {$expiryMinutes} minutes. If you didn't request this, ignore this email.";
+
+    $html = <<<HTML
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="x-apple-disable-message-reformatting">
-    <title>Welcome to AquaTracker</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>{$heading}</title>
 </head>
-<body style="margin:0; padding:0; background-color:#f1f5f7; font-family:Arial, Helvetica, sans-serif; color:#18343b;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; background-color:#f1f5f7; border-collapse:collapse;">
-        <tr>
-            <td align="center" style="padding:32px 16px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; background-color:#ffffff; border-radius:12px; border-collapse:separate; overflow:hidden;">
-                    <tr>
-                        <td align="center" style="padding:36px 32px 0;">
-                            <h1 style="margin:0; color:#087f8c; font-size:28px; line-height:1.3; font-weight:700;">Welcome to AquaTracker!</h1>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:20px 36px 8px; font-size:16px; line-height:1.7; color:#40565c;">
-                            <p style="margin:0 0 16px;">Hi {$safeName},</p>
-                            <p style="margin:0 0 16px;">Your AquaTracker account is ready. Find trusted water stations, manage your orders, and stay on top of your water needs in one place.</p>
-                            <p style="margin:0;">Sign in with <strong style="color:#18343b;">{$safeEmail}</strong> to get started.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td align="center" style="padding:24px 24px 32px;">
-                            <a href="{$loginUrl}" style="display:inline-block; padding:14px 30px; background-color:#087f8c; border:1px solid #087f8c; border-radius:6px; color:#ffffff; font-size:16px; line-height:1.2; font-weight:700; text-decoration:none;">Get Started</a>
-                        </td>
-                    </tr>
-                </table>
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; border-collapse:collapse;">
-                    <tr>
-                        <td align="center" style="padding:20px 16px 0; color:#71858a; font-size:12px; line-height:1.5;">
-                            <p style="margin:0;">&copy; {$year} AquaTracker. All rights reserved.</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+<body style="margin:0;padding:0;background:#f1f5f7;color:#18343b;font-family:Arial,Helvetica,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f1f5f7">
+    <tr><td align="center" style="padding:32px 16px">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:560px;border-collapse:separate;background:#fff;border-radius:14px">
+        <tr><td style="padding:36px 32px 12px;text-align:center">
+          <h1 style="margin:0;color:#087f8c;font-size:26px;line-height:1.3">{$heading}</h1>
+        </td></tr>
+        <tr><td style="padding:8px 32px 0;text-align:center;font-size:16px;line-height:1.6;color:#40565c">
+          <p style="margin:0 0 20px">Use this one-time code to {$action}:</p>
+          <p aria-label="One-time code" style="display:inline-block;margin:0;padding:12px 24px;border-radius:10px;background:#effaf5;color:#073b4c;font-size:36px;font-weight:700;letter-spacing:10px;line-height:1.3">{$code}</p>
+          <p style="margin:22px 0 8px">This code expires in <strong>{$expiryMinutes} minutes</strong>.</p>
+          <p style="margin:0;color:#71858a;font-size:13px">If you didn't request this, ignore this email.</p>
+        </td></tr>
+        <tr><td style="padding:28px 20px 24px;text-align:center;color:#71858a;font-size:12px">AquaTracker</td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
 </html>
 HTML;
 
     $payload = json_encode([
-        'sender' => ['name' => 'AquaTracker', 'email' => $senderEmail],
-        'to' => [['email' => $userEmail, 'name' => $greetingName]],
-        'subject' => 'Welcome to AquaTracker!',
-        'htmlContent' => $htmlContent,
-        'textContent' => "Welcome to AquaTracker, {$greetingName}! Your account is ready. Sign in with {$userEmail} at {$publicUrl}/auth/{$loginRole}/login to get started.",
+        'sender' => ['name' => $senderName, 'email' => $senderEmail],
+        'to' => [['email' => (string) $message['to']]],
+        'subject' => $subject,
+        'htmlContent' => $html,
+        'textContent' => $plain,
     ], JSON_THROW_ON_ERROR);
 
     $curl = curl_init('https://api.brevo.com/v3/smtp/email');
     if ($curl === false) {
-        throw new \RuntimeException('Could not initialize the Brevo request.');
+        error_log('Brevo OTP email failed: cURL initialization error.');
+        throw new \RuntimeException('OTP email could not be sent.');
     }
 
     curl_setopt_array($curl, [
@@ -99,20 +106,21 @@ HTML;
         CURLOPT_TIMEOUT => 30,
     ]);
 
-    $responseBody = curl_exec($curl);
-    $curlError = curl_error($curl);
-    $statusCode = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $response = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $transportFailed = $response === false;
     curl_close($curl);
 
-    if ($responseBody === false) {
-        throw new \RuntimeException('Brevo request failed: ' . ($curlError ?: 'unknown cURL error.'));
-    }
-
-    if ($statusCode < 200 || $statusCode >= 300) {
-        $response = json_decode($responseBody, true);
-        $message = is_array($response) && isset($response['message'])
-            ? (string) $response['message']
-            : 'Brevo rejected the email request.';
-        throw new \RuntimeException("Brevo API returned HTTP {$statusCode}: {$message}");
+    if ($transportFailed || $status < 200 || $status >= 300) {
+        $category = match (true) {
+            $transportFailed => 'transport error',
+            $status === 401 => 'invalid API key',
+            $status === 403 => 'sender verification or permission error',
+            $status === 429 => 'rate limit or daily quota',
+            $status === 402 => 'daily quota',
+            default => 'provider error',
+        };
+        error_log("Brevo OTP email failed: HTTP status={$status}; category={$category}; response body suppressed.");
+        throw new \RuntimeException('OTP email could not be sent.');
     }
 }

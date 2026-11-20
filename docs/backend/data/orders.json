@@ -1,0 +1,94 @@
+[
+  {
+    "id": "AT-2001",
+    "userId": "1bdf2e51-78e4-4c9d-985d-040b6c44ee35",
+    "customerName": "Customer Demo",
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 1,
+    "fulfillment": "delivery",
+    "status": "New order",
+    "total": 35,
+    "createdAt": "2026-09-22T07:58:40.026Z"
+  },
+  {
+    "id": "AT-2002",
+    "userId": "1bdf2e51-78e4-4c9d-985d-040b6c44ee35",
+    "customerName": "Customer Demo",
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 2,
+    "fulfillment": "delivery",
+    "status": "New order",
+    "total": 70,
+    "createdAt": "2026-09-22T08:12:09.757Z"
+  },
+  {
+    "id": "AT-2003",
+    "userId": "aef0d394-b481-43cd-b1f4-2b408baf1615",
+    "customerName": "Jewel Kim Labastilla",
+    "stationId": "waterpol",
+    "stationName": "Waterpol Water Refilling Station",
+    "gallons": 2,
+    "fulfillment": "pickup",
+    "status": "New order",
+    "total": 70,
+    "createdAt": "2026-09-23T09:08:02.902Z"
+  },
+  {
+    "id": "AT-2004",
+    "userId": "u-owner-demo-1",
+    "customerName": "Maria Clara",
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 5,
+    "fulfillment": "delivery",
+    "status": "Delivered",
+    "total": 150,
+    "createdAt": "2026-09-24T10:00:00Z"
+  },
+  {
+    "id": "AT-2005",
+    "userId": "u-owner-demo-2",
+    "customerName": "Juan Luna",
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 2,
+    "fulfillment": "pickup",
+    "status": "Delivered",
+    "total": 60,
+    "createdAt": "2026-09-25T14:30:00Z"
+  },
+  {
+    "id": "AT-2006",
+    "userId": "1091441b-8b27-4734-99ee-53ade1cb59a0",
+    "customerName": "Customer Demo",
+    "station": {
+      "id": "drink-refill",
+      "name": "DRINK n' REFILL Purified Water Refilling Station",
+      "area": "45 Sabellano St, Pagadian City",
+      "address": "45 Sabellano St, San Jose District, Pagadian City",
+      "hours": "Mon-Sat 7:30 AM-5:00 PM",
+      "coords": {
+        "lat": 7.8269,
+        "lng": 123.4371
+      },
+      "pricePerGallon": 35,
+      "delivery": true,
+      "rating": 4.9
+    },
+    "stationId": "drink-refill",
+    "stationName": "DRINK n' REFILL Purified Water Refilling Station",
+    "gallons": 10,
+    "fulfillment": "delivery",
+    "status": "Preparing",
+    "unitPrice": 35,
+    "subtotal": 350,
+    "discountRate": 0.15,
+    "discount": 52.5,
+    "total": 297.5,
+    "createdAt": "2026-10-21T16:24:12.387Z",
+    "internalNote": "Filling containers",
+    "updatedAt": "2026-10-21T16:24:12.579Z"
+  }
+]

@@ -17,7 +17,31 @@ final class OwnerController
     private const REFILL_TYPES = ['5-gal-slim', '5-gal-round'];
     private const INVENTORY_TYPES = ['caps', 'seals', 'bottles'];
 
-    /** Resolve (and create on first login) the station owned by this user. */
+    /** True when $stationId is a station owned by the account $userId. */
+    public static function ownsStation(string $userId, string $stationId): bool
+    {
+        if ($userId === '' || $stationId === '') {
+            return false;
+        }
+
+        return Database::scalar(
+            'SELECT s.id FROM station s
+               JOIN station_owner so ON so.id = s.owner_id
+              WHERE s.id = ? AND so.user_id = ? LIMIT 1',
+            [$stationId, $userId]
+        ) !== null;
+    }
+
+    /**
+     * Resolve (and create on first login) the station owned by this user.
+     *
+     * The station stored on the account (user.station_id) wins, so an owner who
+     * runs several stations still lands on the one their profile names. Only
+     * then does an explicit ?stationId switch apply, and only when the owner
+     * really owns that station. The previous order fell straight through to the
+     * lowest station id, which is why multi-station owners were pinned to their
+     * first station instead of their primary one.
+     */
     public static function stationId(array $user): string
     {
         $userId = (string) ($user['id'] ?? '');
@@ -25,23 +49,23 @@ final class OwnerController
             return '';
         }
 
+        $primaryId = trim((string) ($user['stationId'] ?? $user['station_id'] ?? ''));
+        if ($primaryId !== '' && self::ownsStation($userId, $primaryId)) {
+            return $primaryId;
+        }
+
         $requestedId = trim((string) ($_GET['stationId'] ?? ''));
-        if ($requestedId !== '') {
-            $owned = Database::scalar(
-                'SELECT id FROM station WHERE id = ? AND owner_id = (SELECT id FROM station_owner WHERE user_id = ? LIMIT 1) LIMIT 1',
-                [$requestedId, $userId]
-            );
-            if ($owned !== null) {
-                return (string) $owned;
-            }
+        if ($requestedId !== '' && self::ownsStation($userId, $requestedId)) {
+            return $requestedId;
         }
 
         $owner = Database::one('SELECT * FROM station_owner WHERE user_id = ? LIMIT 1', [$userId]);
         if ($owner === null) {
             $ownerId = Database::nextReadableId('owners');
             $ownerName = trim((string) ($user['name'] ?? '')) ?: 'Station Owner';
+            $ownerNameColumn = Database::stationOwnerNameColumn();
             Database::run(
-                'INSERT INTO station_owner (id, user_id, owner_name) VALUES (?, ?, ?)',
+                "INSERT INTO station_owner (id, user_id, `$ownerNameColumn`) VALUES (?, ?, ?)",
                 [$ownerId, $userId, mb_substr($ownerName, 0, 190)]
             );
             $owner = ['id' => $ownerId, 'owner_name' => $ownerName];
@@ -62,7 +86,7 @@ final class OwnerController
                 $owner['id'],
                 mb_substr($name, 0, 190),
                 '',
-                json_encode(['hours' => 'Mon-Sat 7:30 AM-5:00 PM', 'contact' => (string) ($user['phone'] ?? '')]),
+                json_encode(['hours' => 'Mon-Sat 7:30 AM-5:00 PM']),
                 'open',
             ]
         );
@@ -91,7 +115,6 @@ final class OwnerController
         $name = trim($ctx->str('name'));
         $address = trim($ctx->str('address'));
         $hours = trim($ctx->str('hours'));
-        $contact = trim($ctx->str('contact'));
         $rawLat = $ctx->input('lat');
         $rawLng = $ctx->input('lng');
         if ($name === '' || mb_strlen($name) > 190) {
@@ -112,7 +135,7 @@ final class OwnerController
             [(string) $ctx->user['id']]
         );
         $stationId = Database::nextReadableId('stations');
-        $settings = json_encode(['hours' => $hours, 'contact' => $contact], JSON_UNESCAPED_SLASHES);
+        $settings = json_encode(['hours' => $hours], JSON_UNESCAPED_SLASHES);
         Database::run(
             'INSERT INTO station (id, owner_id, name, address, lat, lng, operating_hours, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [$stationId, $ownerId, $name, mb_substr($address, 0, 255), $lat, $lng, $settings, 'open']
@@ -176,7 +199,7 @@ final class OwnerController
     {
         $rows = Database::all(
             'SELECT o.*, c.user_id AS customer_user_id,
-                    COALESCE(u.full_name, u.name, "") AS customer_name
+                    COALESCE(u.full_name, "") AS customer_name
              FROM `ORDER` o
              LEFT JOIN customer c ON c.id = o.customer_id
              LEFT JOIN user u ON u.id = c.user_id
@@ -318,7 +341,6 @@ final class OwnerController
             'deliveryFee' => (float) ($meta['deliveryFee'] ?? 0),
             'paymentMethod' => (string) ($meta['paymentMethod'] ?? 'cod'),
             'paymentStatus' => (string) ($meta['paymentStatus'] ?? 'paid'),
-            'contactPhone' => (string) ($meta['contactPhone'] ?? ''),
             'deliveryAddress' => (string) ($meta['deliveryAddress'] ?? ''),
             'notes' => (string) ($meta['notes'] ?? ''),
             'createdAt' => Dates::iso($row['created_at']),
@@ -330,14 +352,14 @@ final class OwnerController
     public static function listCustomers(RouteContext $ctx): never
     {
         $rows = Database::all(
-            'SELECT c.id AS customer_id, c.user_id, COALESCE(u.full_name, u.name, "") AS name,
-                    u.email, u.phone, COUNT(o.id) AS order_count,
+            'SELECT c.id AS customer_id, c.user_id, COALESCE(u.full_name, "") AS name,
+                    u.email, COUNT(o.id) AS order_count,
                     COALESCE(SUM(o.total), 0) AS total_spent, MAX(o.created_at) AS last_order
              FROM `ORDER` o
              JOIN customer c ON c.id = o.customer_id
              LEFT JOIN user u ON u.id = c.user_id
              WHERE o.station_id = ?
-             GROUP BY c.id, c.user_id, u.full_name, u.name, u.email, u.phone
+             GROUP BY c.id, c.user_id, u.full_name, u.email
              ORDER BY last_order DESC',
             [self::stationId($ctx->user)]
         );
@@ -347,7 +369,6 @@ final class OwnerController
             'userId' => $r['user_id'],
             'name' => trim((string) $r['name']) ?: 'Customer',
             'email' => (string) ($r['email'] ?? ''),
-            'phone' => (string) ($r['phone'] ?? ''),
             'orderCount' => (int) $r['order_count'],
             'totalSpent' => round((float) $r['total_spent'], 2),
             'lastOrder' => Dates::iso($r['last_order']),
@@ -490,10 +511,8 @@ final class OwnerController
 
         if (is_array($hours)) {
             $hoursText = (string) ($hours['hours'] ?? '');
-            $contact = (string) ($hours['contact'] ?? '');
         } else {
             $hoursText = is_string($hours) ? $hours : '';
-            $contact = '';
         }
 
         return [
@@ -501,7 +520,6 @@ final class OwnerController
             'name' => (string) ($row['name'] ?? ''),
             'address' => (string) ($row['address'] ?? ''),
             'hours' => $hoursText !== '' ? $hoursText : 'Mon-Sat 7:30 AM-5:00 PM',
-            'contact' => $contact,
             'status' => (string) ($row['status'] ?? 'open'),
         ];
     }
@@ -522,7 +540,6 @@ final class OwnerController
         $stationId = self::stationId($ctx->user);
         $hours = [
             'hours' => mb_substr(trim((string) ($settings['hours'] ?? '')), 0, 190),
-            'contact' => mb_substr(trim((string) ($settings['contact'] ?? '')), 0, 40),
         ];
 
         Database::run(
@@ -538,18 +555,17 @@ final class OwnerController
     public static function listStaff(RouteContext $ctx): never
     {
         $rows = Database::all(
-            'SELECT u.* FROM staff st
+            'SELECT u.id, u.full_name, u.email, u.role, u.status, u.created_at FROM staff st
              JOIN user u ON u.id = st.user_id
              WHERE st.station_id = ?
-             ORDER BY u.full_name ASC, u.name ASC',
+             ORDER BY u.full_name ASC',
             [self::stationId($ctx->user)]
         );
 
         Response::json(['staff' => array_map(static fn (array $r): array => [
             'id' => $r['id'],
-            'name' => (string) ($r['full_name'] ?: $r['name']),
+            'name' => (string) $r['full_name'],
             'email' => (string) $r['email'],
-            'phone' => (string) ($r['phone'] ?? ''),
             'role' => (string) $r['role'],
             'status' => (string) ($r['status'] ?? 'active'),
             'createdAt' => Dates::iso($r['created_at'] ?? null),
@@ -563,7 +579,7 @@ final class OwnerController
         $rows = Database::all(
             'SELECT s.*, p.name AS plan_name, p.station_id, p.frequency AS plan_frequency,
                     p.gallons_included, p.price AS plan_price,
-                    COALESCE(u.full_name, u.name, "") AS customer_name
+                    COALESCE(u.full_name, "") AS customer_name
              FROM subscription s
              JOIN subscription_plan p ON p.id = s.plan_id
              LEFT JOIN customer c ON c.id = s.customer_id

@@ -263,7 +263,6 @@
 
         <div class="pickup-card-details">
           <div class="dashboard-detail-row"><span>Items</span><strong>${itemsSummary}</strong></div>
-          <div class="dashboard-detail-row"><span>Contact</span><strong>${escapeHtml(order.contactPhone || 'Not provided')}</strong></div>
           <div class="dashboard-detail-row"><span>Amount to collect</span><strong>₱${Number(order.total || 0).toFixed(2)}</strong></div>
         </div>
 
@@ -598,7 +597,7 @@
         ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })
         : "Station team";
       container.innerHTML = `
-        ${sectionHero("Account & preferences", `Welcome to your station, ${profile.name.split(" ")[0]}.`, "Keep your contact details current so your station team can reach you.")}
+        ${sectionHero("Account & preferences", `Welcome to your station, ${profile.name.split(" ")[0]}.`, "Review your profile details and station assignment.")}
         <div class="dashboard-profile-layout">
           <aside class="glass-panel dashboard-profile-summary">
             <span class="dashboard-avatar profile-avatar">${getInitials(profile.name)}</span><span class="pill completed">Station staff</span>
@@ -613,7 +612,6 @@
             <p class="dashboard-form-intro">Your station assignment and access are managed by your owner.</p>
             <div class="dashboard-profile-fields">
               <label for="staff-profile-name">Full name<input id="staff-profile-name" value="${profile.name}"></label>
-              <label for="staff-profile-phone">Phone number<input id="staff-profile-phone" value="${profile.phone || ''}" placeholder="Add a contact number"></label>
               <label>Email address<input value="${profile.email}" readonly></label>
               <label>Station<input value="${profile.station || currentUser.station}" readonly></label>
             </div>
@@ -628,15 +626,12 @@
 
   async function saveStaffProfile() {
     const name = document.getElementById('staff-profile-name').value.trim();
-    const phone = document.getElementById('staff-profile-phone').value.trim();
     if (!name) return showToast("Name is required.");
 
     try {
       const updated = await global.AquaDashboard.updateProfile({
         name,
-        phone,
         email: currentUser.email,
-        location: currentUser.location || "",
       });
       if (updated) {
         currentUser = updated;

@@ -17,6 +17,7 @@ require_once __DIR__ . '/src/Database.php';
 require_once __DIR__ . '/src/Http.php';
 require_once __DIR__ . '/src/Router.php';
 require_once __DIR__ . '/src/Auth.php';
+require_once __DIR__ . '/src/OtpService.php';
 require_once __DIR__ . '/src/Controllers/AuthController.php';
 require_once __DIR__ . '/src/Controllers/CommerceController.php';
 require_once __DIR__ . '/src/Controllers/ErdController.php';
@@ -39,12 +40,21 @@ $router->get('/404',         [PageController::class, 'notFoundRoute']);
 $router->get('/auth/logout', [AuthController::class, 'logoutGet']);
 $router->post('/auth/logout', [AuthController::class, 'logoutPost']);
 $router->post('/auth/login', [AuthController::class, 'loginJson']);
+$router->post('/auth/signup', [AuthController::class, 'signup']);
+$router->post('/auth/verify-email', [AuthController::class, 'verifyEmail']);
+$router->post('/auth/resend-otp', [AuthController::class, 'resendOtp']);
+$router->post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+$router->post('/auth/verify-reset-otp', [AuthController::class, 'verifyResetOtp']);
+$router->post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+$router->get('/auth/verify-email', [PageController::class, 'otpPage']);
+$router->get('/auth/forgot-password', [PageController::class, 'otpPage']);
+$router->get('/auth/reset-otp', [PageController::class, 'otpPage']);
+$router->get('/auth/reset-password', [PageController::class, 'otpPage']);
 $router->get('/auth/:role/:mode',  [AuthController::class, 'formPage']);
 $router->post('/auth/:role/:mode', [AuthController::class, 'submitForm']);
 $router->get('/api/auth/me', [AuthController::class, 'me']);
 $router->patch('/api/profile', [AuthController::class, 'updateProfile'], [[Auth::class, 'requireAuth']]);
 $router->post('/api/profile/password', [AuthController::class, 'changePassword'], [[Auth::class, 'requireAuth']]);
-$router->patch('/api/profile/address', [ErdController::class, 'updateAddress'], [Auth::requireRole('customer')]);
 
 // ---------------------------------------------------------------------------
 // Customer: stations, orders, subscriptions

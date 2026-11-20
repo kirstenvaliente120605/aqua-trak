@@ -117,6 +117,18 @@ final class Database
         return $value === false ? null : $value;
     }
 
+    public static function stationOwnerNameColumn(): string
+    {
+        $columns = array_column(self::all('SHOW COLUMNS FROM station_owner'), 'Field');
+        foreach (['owner_name', 'business_name'] as $column) {
+            if (in_array($column, $columns, true)) {
+                return $column;
+            }
+        }
+
+        throw new RuntimeException('The station_owner table must contain owner_name or business_name.');
+    }
+
     /** Public key generator, mirroring the UUIDs the Node store used. */
     public static function uuid(): string
     {

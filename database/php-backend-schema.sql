@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS `users` (
   `role`          ENUM('customer','owner','staff') NOT NULL,
   `full_name`     VARCHAR(100) NOT NULL,
   `phone`         VARCHAR(40)  DEFAULT NULL,
-  `remember_me`   TINYINT(1)   NOT NULL DEFAULT 0,
   `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_email` (`email`),
@@ -49,7 +48,6 @@ CREATE TABLE IF NOT EXISTS `station_owners` (
 CREATE TABLE IF NOT EXISTS `customers` (
   `id`              CHAR(36)     NOT NULL DEFAULT (UUID()),
   `user_id`         CHAR(36)     NOT NULL,
-  `default_address` VARCHAR(255) DEFAULT NULL,
   `aqua_points`     INT          NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_customer_user` (`user_id`),
@@ -124,9 +122,8 @@ CREATE TABLE IF NOT EXISTS `notifications` (
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `rewards` (
   `id`                 CHAR(36)     NOT NULL DEFAULT (UUID()),
-  `owner_id`           CHAR(36)     NOT NULL,
+  `owner_id`           CHAR(36)     NULL,
   `name`               VARCHAR(190) NOT NULL,
-  `required_purchases` INT          NOT NULL DEFAULT 0,
   `reward_description` VARCHAR(255) NOT NULL,
   `status`             VARCHAR(40)  NOT NULL DEFAULT 'active',
   PRIMARY KEY (`id`),
@@ -162,7 +159,6 @@ CREATE TABLE IF NOT EXISTS `customer_rewards` (
   `customer_id`   CHAR(36)     NOT NULL,
   `reward_id`     CHAR(36)     NOT NULL,
   `points`        INT          NOT NULL DEFAULT 0,
-  `reason`        VARCHAR(255) DEFAULT NULL,
   `earned_at`     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `ix_customer_rewards_customer` (`customer_id`),
@@ -231,7 +227,6 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   `id`              CHAR(36)     NOT NULL DEFAULT (UUID()),
   `customer_id`     CHAR(36)     NOT NULL,
   `plan_id`         CHAR(36)     NOT NULL,
-  `start_date`      DATE         DEFAULT NULL,
   `next_delivery`   DATE         DEFAULT NULL,
   `status`          VARCHAR(40)  NOT NULL DEFAULT 'active',
   PRIMARY KEY (`id`),
@@ -246,13 +241,12 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ============================================================================
--- 14. orders (table named orders; promotion_id nullable)
+-- 14. orders (table named orders)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS `orders` (
   `id`             VARCHAR(20)  NOT NULL,
   `customer_id`    CHAR(36)     NOT NULL,
   `station_id`     CHAR(36)     NOT NULL,
-  `promotion_id`   CHAR(36)     DEFAULT NULL,
   `type`           VARCHAR(40)  NOT NULL DEFAULT 'refill',
   `status`         VARCHAR(40)  NOT NULL DEFAULT 'New',
   `total`          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -260,7 +254,6 @@ CREATE TABLE IF NOT EXISTS `orders` (
   PRIMARY KEY (`id`),
   KEY `ix_orders_customer` (`customer_id`),
   KEY `ix_orders_station` (`station_id`),
-  KEY `ix_orders_promotion` (`promotion_id`),
   KEY `ix_orders_status` (`status`),
   KEY `ix_orders_created` (`created_at`),
   CONSTRAINT `fk_orders_customer`
@@ -268,10 +261,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
     ON DELETE CASCADE,
   CONSTRAINT `fk_orders_station`
     FOREIGN KEY (`station_id`) REFERENCES `stations` (`id`)
-    ON DELETE CASCADE,
-  CONSTRAINT `fk_orders_promotion`
-    FOREIGN KEY (`promotion_id`) REFERENCES `promotions` (`id`)
-    ON DELETE SET NULL
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ============================================================================

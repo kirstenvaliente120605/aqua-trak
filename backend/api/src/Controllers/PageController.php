@@ -33,6 +33,11 @@ final class PageController
         Response::page('not-found.html', 404);
     }
 
+    public static function otpPage(RouteContext $ctx): never
+    {
+        Response::page('otp.html');
+    }
+
     /**
      * The bare /customer-dashboard.html style URLs. Express served these
      * without a session check and let the client-side guard in js/auth.js

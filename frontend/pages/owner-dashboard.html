@@ -55,7 +55,7 @@
           <select id="owner-station-select" aria-label="Select station" hidden></select>
           <div class="top-account">
             <strong id="top-name">Joan Dela Cruz</strong>
-            <small id="top-subtitle">ClearSpring Water Hub</small>
+            <small id="top-station">Station</small>
           </div>
           <span class="avatar pale" id="top-avatar">JD</span>
         </div>
@@ -114,8 +114,8 @@
       const initials = (user.name || 'OW').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
       document.getElementById('user-avatar').textContent = initials;
       document.getElementById('top-avatar').textContent = initials;
-      document.getElementById('user-role-label').textContent = user.subtitle || 'Station Owner';
-      document.getElementById('top-subtitle').textContent = user.subtitle || 'Station Owner';
+      document.getElementById('user-role-label').textContent = user.station || 'Station Owner';
+      document.getElementById('top-station').textContent = user.station || 'Station Owner';
     }
 
     function renderNavigation(user) {

@@ -13,14 +13,14 @@ export const roleMeta = {
 };
 
 export const stations = [
-  ["DRINK n' REFILL Purified Water Refilling Station", "45 Sabellano St, Pagadian City", "Mon–Sat 7:30 AM–4:30 PM", "0918 962 5038", "Contact station", "Verified listing"],
-  ["Ultra Pure Water Refilling Station", "Purok Bakhaw A, Brgy. Kawit", "Hours not publicly listed", "0970 488 8866", "Contact station", "Verified listing"],
-  ["Waterpol Water Refilling Station", "Purok Pagang, Brgy. Kawit", "Delivery advertised", "0927 251 4246", "Contact station", "Delivery"],
-  ["PG Aquamaster Water Refilling Station", "Purok Makugihon, Brgy. Bulatok", "Hours not publicly listed", "0951 312 5308", "Contact station", "Verified listing"],
-  ["Aqua'Ter SMN Water Refilling Station", "Beside DXPR, San Jose District", "Delivery advertised", "0975 462 7620", "₱25 / gallon", "Best value"],
-  ["PH2O Water Refilling Station", "Warlito Pulmones St, Santiago District", "Vendo available 24/7", "0985 337 4448", "Contact station", "24/7 vendo"],
-  ["Alka Water Refilling Station", "Zone 11, Alta Tierra Subdivision, Tiguma", "Hours not publicly listed", "0938 686 3252", "Contact station", "Verified listing"],
-].map(([name, area, hours, phone, price, tag]) => ({ name, area, hours, phone, price, tag }));
+  ["DRINK n' REFILL Purified Water Refilling Station", "45 Sabellano St, Pagadian City", "Mon–Sat 7:30 AM–4:30 PM"],
+  ["Ultra Pure Water Refilling Station", "Purok Bakhaw A, Brgy. Kawit", "Hours not publicly listed"],
+  ["Waterpol Water Refilling Station", "Purok Pagang, Brgy. Kawit", "Delivery advertised"],
+  ["PG Aquamaster Water Refilling Station", "Purok Makugihon, Brgy. Bulatok", "Hours not publicly listed"],
+  ["Aqua'Ter SMN Water Refilling Station", "Beside DXPR, San Jose District", "Delivery advertised"],
+  ["PH2O Water Refilling Station", "Warlito Pulmones St, Santiago District", "Vendo available 24/7"],
+  ["Alka Water Refilling Station", "Zone 11, Alta Tierra Subdivision, Tiguma", "Hours not publicly listed"],
+].map(([name, area, hours]) => ({ name, area, hours }));
 
 export const orders = [
   ["AT-1048", "Mia Santos", "2 × 5-gallon refill", "₱70.00", "Ready for pickup", "teal"],
@@ -31,7 +31,7 @@ export const orders = [
 
 export const sections = {
   customer: {
-    "find-stations": ["Station finder", "Find clean water close by.", "Search nearby refill stations by distance, operating hours, price, and availability.", [["7", "verified listings", "Pagadian City"], ["4", "delivery / pickup options", "check each station"], ["₱25", "listed starting price", "Aqua'Ter SMN"]], stations.map((s) => [s.name, `${s.area} · ${s.hours} · ${s.phone}`, "Listed"])],
+    "find-stations": ["Station finder", "Find clean water close by.", "Search nearby refill stations by distance, operating hours, price, and availability.", [["7", "verified listings", "Pagadian City"], ["4", "delivery / pickup options", "check each station"], ["₱25", "listed starting price", "Aqua'Ter SMN"]], stations.map((s) => [s.name, `${s.area} · ${s.hours}`, "Listed"])],
     "my-subscriptions": ["Refill plans", "Stay ahead of your next refill.", "Manage active plans, renewal dates, gallon usage, and delivery preferences.", [["1", "active plan", "Monthly essentials"], ["2 / 4", "gallons used", "this billing cycle"], ["Oct 03", "next renewal", "13 days away"]], [["Monthly essentials", "4 gallons per month · ClearSpring Water Hub", "Active"], ["Next refill", "2 gallons planned · Delivery on Oct 03", "Scheduled"], ["Payment method", "Visa ending in 2048 · Auto-renew enabled", "Verified"]]],
     "orders-history": ["Refill history", "Every refill, in one place.", "Review past orders, pickup details, receipts, and current refill status.", [["8", "completed orders", "this year"], ["1", "in progress", "ready soon"], ["₱1,240", "saved with plans", "this year"]], [["Order #AT-2048", "2 gallons · ClearSpring Water Hub · Sep 20", "Ready for pickup"], ["Order #AT-1987", "4 gallons · AquaVida Refill Station · Sep 05", "Completed"], ["Order #AT-1873", "2 gallons · BlueDrop Purified Water · Aug 18", "Completed"]]],
     rewards: ["AquaPoints", "Your refills are giving back.", "Track points earned from refills and redeem perks for your next station visit.", [["120", "points available", "ready to redeem"], ["2", "perks unlocked", "this month"], ["40", "points to next perk", "Keep refilling"]], [["₱50 refill credit", "Redeem with 150 AquaPoints", "40 points away"], ["Reusable bottle", "Unlocked after 100 points", "Available"], ["September streak", "3 consecutive refill weeks", "+20 bonus points"]]],

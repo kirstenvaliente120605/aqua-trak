@@ -55,17 +55,22 @@ export function updateStationPricing(stationId, pricingData) {
 
 export function getStationSettings(stationId) {
   const settings = readJson(settingsFile, {});
-  return settings[stationId] || {
-    name: "Unknown Station",
-    address: "Unknown Address",
-    hours: "Not set",
-    contact: "Not set"
+  const saved = settings[stationId];
+  return {
+    name: saved?.name || "Unknown Station",
+    address: saved?.address || "Unknown Address",
+    hours: saved?.hours || "Not set",
   };
 }
 
 export function updateStationSettings(stationId, settingsData) {
   const settings = readJson(settingsFile, {});
-  settings[stationId] = { ...settings[stationId], ...settingsData };
+  const updated = settingsData || {};
+  settings[stationId] = {
+    name: updated.name,
+    address: updated.address,
+    hours: updated.hours,
+  };
   writeJson(settingsFile, settings);
   return { success: true };
 }

@@ -10,9 +10,7 @@ $demo = [
 foreach ($demo as [$email,$pw,$name,$role]) {
   if (\AquaTracker\Auth::findByEmail($email)) continue;
   $res = \AquaTracker\Auth::createUser($email,$pw,$name,$role,
-    $role==='owner'?'ClearSpring Water Hub':'',
-    $role==='staff'?'+63 917 555 0148':'',
-    $role==='staff'?0:0);
+    $role==='owner'?'ClearSpring Water Hub':'');
   echo ($res['user'] ?? $res['error'] ?? 'unknown') . " for $email\n";
 }
 echo "Seed done.\n";

@@ -57,7 +57,10 @@ final class CommerceController
     /** @return list<array<string,mixed>> */
     public static function stationCatalog(): array
     {
-        $rows = Database::all('SELECT * FROM stations ORDER BY name ASC');
+        $rows = Database::all(
+            'SELECT id, name, area, address, hours, lat, lng, price_per_gallon, delivery, rating
+             FROM stations ORDER BY name ASC'
+        );
         return array_map([self::class, 'shapeStation'], $rows);
     }
 
@@ -72,7 +75,6 @@ final class CommerceController
             'name'           => $row['name'],
             'area'           => (string) $row['area'],
             'address'        => (string) $row['address'],
-            'phone'          => (string) $row['phone'],
             'hours'          => (string) $row['hours'],
             // Coordinates drive the nearest-station filter in Step 1. alka has
             // none yet, so it stays out of proximity results until they are added.
@@ -156,7 +158,11 @@ final class CommerceController
      */
     public static function calculatePrice(string $stationId, mixed $gallons): ?array
     {
-        $row = Database::one('SELECT * FROM stations WHERE id = ? LIMIT 1', [$stationId]);
+        $row = Database::one(
+            'SELECT id, name, area, address, hours, lat, lng, price_per_gallon, delivery, rating
+             FROM stations WHERE id = ? LIMIT 1',
+            [$stationId]
+        );
         if ($row === null) {
             return null;
         }

@@ -1,0 +1,24 @@
+{
+  "name": "aquatracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "serve": "node server.js",
+    "coords:fix": "node scripts/fix-station-coords.mjs",
+    "coords:validate": "node scripts/validate-station-coords.mjs",
+    "check": "C:\\xampp\\php\\php.exe -l backend/api/index.php && C:\\xampp\\php\\php.exe -l backend/api/src/Controllers/ErdController.php && node --check frontend/js/app.js && node --check frontend/js/auth.js && node --check frontend/js/dashboard.js",
+    "test": "node backend/tests/api.test.mjs && node backend/tests/stations.test.mjs",
+    "format": "prettier --write frontend backend/api"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}

@@ -9,7 +9,6 @@
     "station": "",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:05:57.270Z"
@@ -24,7 +23,6 @@
     "station": "ClearSpring Water Hub",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:05:57.339Z"
@@ -43,7 +41,6 @@
       "inventory",
       "requests"
     ],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:05:57.390Z"
@@ -58,7 +55,6 @@
     "station": "ClearSpring Water Hub",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:07:25.804Z"
@@ -73,7 +69,6 @@
     "station": "ClearSpring Water Hub",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:14:28.944Z"
@@ -88,7 +83,6 @@
     "station": "ClearSpring Water Hub",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:23:30.917Z"
@@ -103,7 +97,6 @@
     "station": "ClearSpring Water Hub",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:42:10.119Z"
@@ -118,7 +111,6 @@
     "station": "",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:43:45.948Z"
@@ -133,7 +125,6 @@
     "station": "",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:44:04.256Z"
@@ -148,7 +139,6 @@
     "station": "",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:49:23.004Z"
@@ -163,7 +153,6 @@
     "station": "",
     "stationId": "",
     "permissions": [],
-    "phone": "",
     "location": "",
     "status": "active",
     "createdAt": "2026-10-21T12:50:13.177Z"

@@ -1,0 +1,18 @@
+node_modules/
+vendor/
+.env
+.env.local
+.env.production
+_archive/
+backup/
+.phpunit.result.cache
+.DS_Store
+
+# Local files and sensitive data
+frontend/credentials.json
+frontend/test_mail.php
+backups/
+.test-sessions/
+backend/api/diagnostics/
+/cls
+/npm

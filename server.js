@@ -1,7 +1,5 @@
 import app from "./backend/src/app.js";
 
-import { sendSystemEmail } from './emailService.js';
-
 const port = Number(process.env.PORT || 8080);
 const server = app.listen(port, () => {
     console.log(`AquaTracker running at http://localhost:${port}`);

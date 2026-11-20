@@ -147,13 +147,14 @@
     return Array.isArray(data.staff) ? data.staff : [];
   }
 
-  async function decideStaffApproval(id, decision) {
+  /** Approving needs the station the applicant is being claimed for. */
+  async function decideStaffApproval(id, decision, stationId = "") {
     if (!["approve", "reject"].includes(decision)) {
       throw new Error("Invalid approval decision.");
     }
     return common.api(stationPath(`/api/staff-approvals/${encodeURIComponent(id)}`), {
       method: "POST",
-      body: JSON.stringify({ decision }),
+      body: JSON.stringify({ decision, stationId }),
     });
   }
 

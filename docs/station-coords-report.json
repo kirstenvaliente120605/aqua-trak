@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-10-31",
+  "database": "aquatracker.station",
+  "stationCount": 12,
+  "backup": "backups/station-coords-before-20261031/live-station-table.sql",
+  "notes": "Nominatim was unreachable and GOOGLE_MAPS_API_KEY was unset. The DRINK n' REFILL live database coordinate was retained, rounded to six decimals. Alka uses the public listing GPS point. Other approximate points use existing address/fixture coordinates or unique city-level pins where the database had only a name; double-check all rows labeled approximate before using for turn-by-turn directions.",
+  "stations": [
+    { "id": "STN_001", "name": "Aqua'Ter SMN Water Refilling Station", "old": "0, 0", "new": "7.819100, 123.441200", "source": "approximate", "note": "Existing address fixture: Beside DXPR Radio, San Jose District." },
+    { "id": "STN_010", "name": "AQUAWATER Refilling Station", "old": "0, 0", "new": "7.828000, 123.438000", "source": "approximate", "note": "No address in database; city-level pin." },
+    { "id": "STN_005", "name": "AquaWorld", "old": "0, 0", "new": "7.829000, 123.439000", "source": "approximate", "note": "No address in database; city-level pin." },
+    { "id": "STN_006", "name": "ClearSpring Water Hub", "old": "0, 0", "new": "7.830000, 123.440000", "source": "approximate", "note": "No address in database; city-level pin." },
+    { "id": "STN_009", "name": "ClearSpring Water Hub", "old": "0, 0", "new": "7.832000, 123.442000", "source": "approximate", "note": "Duplicate name, no address; unique city-level pin." },
+    { "id": "STN_002", "name": "DRINK n' REFILL Purified Water Refilling Station", "old": "7.8273302, 123.4441852594", "new": "7.827330, 123.444185", "source": "approximate", "note": "Retained the more precise live database coordinate and rounded to six decimals." },
+    { "id": "STN_011", "name": "H2O Water Refilling Station", "old": "0, 0", "new": "7.833000, 123.445000", "source": "approximate", "note": "No address in database; city-level pin." },
+    { "id": "STN_003", "name": "PG Aquamaster Water Refilling Station", "old": "0, 0", "new": "7.819800, 123.429700", "source": "approximate", "note": "Existing fixture address: Purok Makugihon, Brgy. Bulatok." },
+    { "id": "STN_004", "name": "PH2O Water Refilling Station", "old": "0, 0", "new": "7.836200, 123.426400", "source": "approximate", "note": "Existing fixture address: Warlito Pulmones St, Santiago District." },
+    { "id": "STN_007", "name": "Ultra Pure Water Refilling Station", "old": "0, 0", "new": "7.831200, 123.443700", "source": "approximate", "note": "Existing fixture address: Purok Bakhaw A, Brgy. Kawit." },
+    { "id": "STN_008", "name": "Waterpol Water Refilling Station", "old": "0, 0", "new": "7.834700, 123.448100", "source": "approximate", "note": "Existing fixture address: Purok Pagang, Brgy. Kawit." },
+    { "id": "STN_ALKA", "name": "Alka Water Refilling Station", "old": "missing (not in live table)", "new": "7.840580, 123.463360", "source": "web", "note": "Public listing provides GPS Coordinates 7.84058,123.46336.", "url": "https://philippines.worldplaces.me/review/91632423-alka-water-refilling-station.html" }
+  ]
+}

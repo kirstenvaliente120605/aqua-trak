@@ -585,6 +585,7 @@
     try {
       const approvals = await global.AquaOwner.fetchStaffApprovals();
       const staff = await global.AquaOwner.fetchStaff();
+      const stations = await global.AquaOwner.fetchStations();
       container.innerHTML = `
         ${sectionHero(`Team operations · ${currentUser.station}`, "Build a team that keeps water moving.", "Review new applications and stay connected with the people behind every refill.")}
         <div class="stats three">
@@ -598,7 +599,7 @@
             ${approvals.length ? `<div class="dashboard-card-list">${approvals.map(applicant => `
               <article class="glass-card dashboard-person-card approval-card">
                 <div class="dashboard-person-main"><span class="dashboard-avatar">${getInitials(applicant.name)}</span><div><strong>${applicant.name}</strong><span>${applicant.email}</span></div></div>
-                <div class="approval-details"><span class="eyebrow">Requested assignment</span><strong>${applicant.station || currentUser.station}</strong><small>Submitted ${formatDate(applicant.createdAt || applicant.submittedAt)}</small></div>
+                <div class="approval-details"><span class="eyebrow">Assign to station</span><select data-approval-station="${escapeHtml(applicant.id)}">${stations.map(station => `<option value="${escapeHtml(station.id)}"${station.id === (applicant.stationId || currentUser.stationId) ? " selected" : ""}>${escapeHtml(station.name)}</option>`).join("")}</select><small>Submitted ${formatDate(applicant.createdAt || applicant.submittedAt)}</small></div>
                 <div class="dashboard-card-actions"><button class="button small amber" data-approval-id="${escapeHtml(applicant.id)}" data-decision="approve">Approve</button><button class="button small outline" data-approval-id="${escapeHtml(applicant.id)}" data-decision="reject">Reject</button></div>
               </article>
             `).join("")}</div>` : `<div class="empty-state dashboard-empty"><span class="empty-state-icon">✓</span><strong>All caught up</strong><p>There are no staff applications waiting for review.</p></div>`}
@@ -613,7 +614,14 @@
       `;
       container.onclick = async event => {
         const button = event.target.closest("[data-approval-id]");
-        if (button) await handleStaffDecision(button.dataset.approvalId, button.dataset.decision);
+        if (!button) return;
+        // Approving claims the applicant for one of the owner's own stations.
+        const stationId = button.closest(".approval-card")?.querySelector("[data-approval-station]")?.value || "";
+        if (button.dataset.decision === "approve" && !stationId) {
+          showToast("Choose one of your stations first.");
+          return;
+        }
+        await handleStaffDecision(button.dataset.approvalId, button.dataset.decision, stationId);
       };
     } catch (err) {
       console.error("Error rendering staff:", err);
@@ -621,14 +629,14 @@
     }
   }
 
-  async function handleStaffDecision(id, decision) {
+  async function handleStaffDecision(id, decision, stationId = "") {
     try {
-      const res = await global.AquaOwner.decideStaffApproval(id, decision);
+      await global.AquaOwner.decideStaffApproval(id, decision, stationId);
       showToast(`Staff member ${decision === 'approve' ? 'approved' : 'rejected'} successfully.`);
       await renderStaff(document.getElementById('main-content'));
     } catch (err) {
       console.error("Error deciding staff approval:", err);
-      showToast("Failed to update staff status.");
+      showToast(err?.message || "Failed to update staff status.");
     }
   }
 
@@ -740,9 +748,8 @@
               <label for="set-address">Street address</label><input type="text" id="set-address" value="${settings.address}">
             </fieldset>
             <fieldset class="dashboard-form-section">
-              <legend><span>02</span>Hours & contact</legend>
+              <legend><span>02</span>Operating hours</legend>
               <label for="set-hours">Operating hours</label><input type="text" id="set-hours" value="${settings.hours}">
-              <label for="set-contact">Contact number</label><input type="text" id="set-contact" value="${settings.contact}">
             </fieldset>
           </div>
           <div class="dashboard-form-footer"><p>Changes update your public station listing.</p><button class="button amber" data-save-settings>Save station details</button></div>
@@ -758,7 +765,6 @@
             <label for="new-station-lat">Latitude (decimal degrees)<input id="new-station-lat" type="number" min="-90" max="90" step="any" required></label>
             <label for="new-station-lng">Longitude (decimal degrees)<input id="new-station-lng" type="number" min="-180" max="180" step="any" required></label>
             <label for="new-station-hours">Operating hours<input id="new-station-hours"></label>
-            <label for="new-station-contact">Contact number<input id="new-station-contact"></label>
           </div>
           <div class="dashboard-form-footer"><p>Each station belongs to this owner only.</p><button class="button amber" type="button" data-add-station>Add station</button></div>
         </section>
@@ -779,14 +785,13 @@
     const lat = document.getElementById('new-station-lat').valueAsNumber;
     const lng = document.getElementById('new-station-lng').valueAsNumber;
     const hours = document.getElementById('new-station-hours').value.trim();
-    const contact = document.getElementById('new-station-contact').value.trim();
     if (!name) return showToast('Enter a station name.');
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return showToast('Enter both latitude and longitude.');
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180 || lat === 0 || lng === 0) {
       return showToast('Enter valid non-zero coordinates within latitude -90..90 and longitude -180..180.');
     }
     try {
-      const station = await global.AquaOwner.addStation({ name, address, lat, lng, hours, contact });
+      const station = await global.AquaOwner.addStation({ name, address, lat, lng, hours });
       showToast(`${station.name} added (${station.id}).`);
       await renderSettings(document.getElementById('main-content'));
     } catch (error) {
@@ -949,7 +954,6 @@
             <p class="dashboard-form-intro">Your station identity is managed by the account signed in to this browser.</p>
             <div class="dashboard-profile-fields">
               <label for="owner-profile-name">Full name<input id="owner-profile-name" value="${owner.name}"></label>
-              <label for="owner-profile-phone">Phone number<input id="owner-profile-phone" value="${owner.phone || ''}" placeholder="Add a contact number"></label>
               <label>Email address<input value="${owner.email}" readonly></label>
               <label>Role<input value="Station owner" readonly></label>
             </div>
@@ -964,7 +968,6 @@
 
   async function saveOwnerProfile() {
     const name = document.getElementById('owner-profile-name').value.trim();
-    const phone = document.getElementById('owner-profile-phone').value.trim();
     if (!name) {
       showToast("Name is required.");
       return;
@@ -973,9 +976,7 @@
     try {
       const updated = await global.AquaDashboard.updateProfile({
         name,
-        phone,
         email: currentUser.email,
-        location: currentUser.location || "",
       });
       if (updated) {
         currentUser = updated;
@@ -994,7 +995,6 @@
       name: document.getElementById('set-name').value,
       address: document.getElementById('set-address').value,
       hours: document.getElementById('set-hours').value,
-      contact: document.getElementById('set-contact').value,
     };
     try {
       const updated = await global.AquaOwner.updateSettings(settings);

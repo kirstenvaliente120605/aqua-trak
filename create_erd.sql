@@ -20,11 +20,50 @@ CREATE TABLE `USER` (
   `id` CHAR(36) PRIMARY KEY,
   `email` VARCHAR(190) UNIQUE NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
+  `email_verified` TINYINT(1) NOT NULL DEFAULT 1,
+  `auth_version` INT UNSIGNED NOT NULL DEFAULT 1,
   `role` VARCHAR(50),
   `full_name` VARCHAR(100),
   `phone` VARCHAR(40),
-  `remember_me` TINYINT(1) DEFAULT 0,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE `email_otps` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `email` VARCHAR(190) NOT NULL,
+  `user_id` CHAR(36) NOT NULL,
+  `code_hash` VARCHAR(255) NOT NULL,
+  `purpose` ENUM('verify_email','reset_password') NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `used_at` DATETIME NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_email_otps_email_purpose` (`email`,`purpose`,`id`),
+  KEY `ix_email_otps_expiry` (`expires_at`),
+  CONSTRAINT `fk_email_otps_user` FOREIGN KEY (`user_id`) REFERENCES `USER` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE `otp_rate_limits` (
+  `scope` VARCHAR(8) NOT NULL,
+  `key_hash` CHAR(64) NOT NULL,
+  `action` VARCHAR(32) NOT NULL,
+  `window_started_at` DATETIME NOT NULL,
+  `request_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`scope`,`key_hash`,`action`)
+) ENGINE=InnoDB;
+
+CREATE TABLE `password_reset_tokens` (
+  `token_hash` CHAR(64) NOT NULL,
+  `email` VARCHAR(190) NOT NULL,
+  `user_id` CHAR(36) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `used_at` DATETIME NULL,
+  PRIMARY KEY (`token_hash`),
+  KEY `ix_password_reset_tokens_user` (`user_id`),
+  KEY `ix_password_reset_tokens_expiry` (`expires_at`),
+  CONSTRAINT `fk_password_reset_tokens_user` FOREIGN KEY (`user_id`) REFERENCES `USER` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE `STATION_OWNER` (
@@ -37,7 +76,6 @@ CREATE TABLE `STATION_OWNER` (
 CREATE TABLE `CUSTOMER` (
   `id` CHAR(36) PRIMARY KEY,
   `user_id` CHAR(36),
-  `default_address` VARCHAR(255),
   `aqua_points` INT DEFAULT 0,
   FOREIGN KEY (`user_id`) REFERENCES `USER`(`id`)
 ) ENGINE=InnoDB;
@@ -51,6 +89,8 @@ CREATE TABLE `STATION` (
   `lng` DECIMAL(10,7),
   `operating_hours` JSON,
   `status` VARCHAR(50),
+  `delivery` TINYINT(1) NOT NULL DEFAULT 0,
+  `delivery_fee` DECIMAL(10,2) NOT NULL DEFAULT 15.00,
   FOREIGN KEY (`owner_id`) REFERENCES `STATION_OWNER`(`id`)
 ) ENGINE=InnoDB;
 
@@ -58,7 +98,6 @@ CREATE TABLE `REWARD` (
   `id` CHAR(36) PRIMARY KEY,
   `owner_id` CHAR(36),
   `name` VARCHAR(190),
-  `required_purchases` INT,
   `reward_description` TEXT,
   `status` VARCHAR(50),
   `code` VARCHAR(100) NULL,
@@ -92,7 +131,6 @@ CREATE TABLE `CUSTOMER_REWARD` (
   `customer_id` CHAR(36),
   `reward_id` CHAR(36),
   `points` INT,
-  `reason` VARCHAR(255),
   `earned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (`customer_id`) REFERENCES `CUSTOMER`(`id`),
   FOREIGN KEY (`reward_id`) REFERENCES `REWARD`(`id`)
@@ -123,15 +161,13 @@ CREATE TABLE `ORDER` (
   `id` CHAR(36) PRIMARY KEY,
   `customer_id` CHAR(36),
   `station_id` CHAR(36),
-  `promotion_id` CHAR(36),
   `type` VARCHAR(50),
   `status` VARCHAR(50),
   `total` DECIMAL(10,2),
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `meta` JSON NULL,
   FOREIGN KEY (`customer_id`) REFERENCES `CUSTOMER`(`id`),
-  FOREIGN KEY (`station_id`) REFERENCES `STATION`(`id`),
-  FOREIGN KEY (`promotion_id`) REFERENCES `PROMOTION`(`id`)
+  FOREIGN KEY (`station_id`) REFERENCES `STATION`(`id`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `STAFF` (
@@ -157,7 +193,6 @@ CREATE TABLE `SUBSCRIPTION` (
   `id` CHAR(36) PRIMARY KEY,
   `customer_id` CHAR(36),
   `plan_id` CHAR(36),
-  `start_date` DATE,
   `next_delivery` DATE,
   `status` VARCHAR(50),
   `meta` JSON NULL,

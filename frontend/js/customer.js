@@ -25,7 +25,6 @@
       fulfillment: orderPayload.fulfillment,
       deliveryAddress: orderPayload.deliveryAddress,
       landmark: orderPayload.landmark || "None specified",
-      contactPhone: orderPayload.contactPhone,
       paymentMethod: orderPayload.paymentMethod,
       subtotal: orderPayload.subtotal,
       discount: orderPayload.discount,

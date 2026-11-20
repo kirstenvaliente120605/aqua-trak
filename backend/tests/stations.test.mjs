@@ -1,11 +1,13 @@
 /**
- * Verifies that the live GET /api/stations payload from the XAMPP backend is
+ * Verifies that the live GET /api/stations payload from the Express backend is
  * shape-compatible with the frontend's own nearest-station ranking.
  *
  * distanceKm() and getNearestStations() are copied verbatim from
  * frontend/js/location.js and frontend/js/dashboard.js respectively, so this
- * fails if the PHP backend ever changes the station JSON contract.
+ * fails if the backend ever changes the station JSON contract.
  */
+import { calculatePrice } from "../src/services/commerceStore.js";
+
 const BASE = process.env.BASE_URL || "http://127.0.0.1:3001";
 
 // --- verbatim from frontend/js/location.js -----------------------------------
@@ -61,6 +63,28 @@ function check(label, cond, detail = "") {
   else { fail++; failures.push(label + (detail ? ` -- ${detail}` : "")); console.log(`  FAIL ${label}${detail ? `  <== ${detail}` : ""}`); }
 }
 
+const pricingFixture = [
+  { id: "fixture-open", pricePerGallon: 22, delivery: true, status: "open" },
+  { id: "fixture-closed", pricePerGallon: 99, delivery: true, status: "closed" },
+  { id: "fixture-unpriced", pricePerGallon: 0, delivery: true, status: "open" },
+];
+check(
+  "server pricing uses the station catalog price",
+  calculatePrice("fixture-open", 2, pricingFixture)?.total === 44
+);
+check(
+  "closed stations are rejected by server-side pricing",
+  calculatePrice("fixture-closed", 2, pricingFixture) === null
+);
+check(
+  "stations without a configured price are rejected",
+  calculatePrice("fixture-unpriced", 1, pricingFixture) === null
+);
+check(
+  "server pricing follows the refill wizard's 8-container discount tier",
+  calculatePrice("fixture-open", 8, pricingFixture)?.total === 149.6
+);
+
 // Pagadian City centre, as used by the frontend fixtures.
 const origin = { lat: 7.8269, lng: 123.4371 };
 
@@ -102,6 +126,14 @@ check("every station has a numeric pricePerGallon",
   stations.every(s => Number.isFinite(s.pricePerGallon)));
 check("delivery is a real boolean, not 0/1",
   stations.every(s => typeof s.delivery === "boolean"));
+check("deliveryAvailable is a real boolean for every station",
+  stations.every(s => typeof s.deliveryAvailable === "boolean"));
+check("delivery fees are non-negative numbers",
+  stations.every(s => Number.isFinite(s.deliveryFee) && s.deliveryFee >= 0));
+check("pickup-only stations have no delivery fee",
+  stations.filter(s => !s.deliveryAvailable).every(s => s.deliveryFee === 0));
+check("availability is explicit for every station",
+  stations.every(s => typeof s.status === "string" && s.status.length > 0));
 check("the 6 stations with frontend fixtures carry a real rating",
   stations.filter(s => s.id !== "alka").every(s => s.rating >= 4 && s.rating <= 5),
   stations.filter(s => s.id !== "alka").map(s => `${s.id}=${s.rating}`).join(" "));
@@ -117,6 +149,36 @@ check("the one without coords is 'alka'",
   stations.filter(s => !isValidPoint(s.coords)).map(s => s.id).join(","));
 check("the backend sends coords: null, never {lat: null} (which would read as 0,0)",
   stations.every(s => s.coords === null || (s.coords.lat !== null && s.coords.lng !== null)));
+
+console.log("\n-- server-authoritative order pricing --");
+const orderStation = stations.find((station) => station.status === "open");
+if (orderStation) {
+  const orderResponse = await fetch(`${BASE}/api/orders`, {
+    method: "POST",
+    headers: {
+      Cookie: cookie,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      stationId: orderStation.id,
+      items: [{ type: "5-gal-slim", count: 1, unitPrice: 0 }],
+      fulfillment: "pickup",
+      stationName: "Untrusted station name",
+      total: 0,
+    }),
+  });
+  const orderPayload = await orderResponse.json();
+  check("item orders are accepted by the existing endpoint", orderResponse.status === 201, `got ${orderResponse.status}`);
+  check(
+    "client price and station name are ignored",
+    orderPayload.order?.unitPrice === orderStation.pricePerGallon &&
+      orderPayload.order?.total === orderStation.pricePerGallon &&
+      orderPayload.order?.stationName === orderStation.name
+  );
+} else {
+  check("an open station is available for order validation", false);
+}
 
 console.log("\n-- getNearestStations(stations, origin) with no radius --");
 const all = getNearestStations(stations, origin);

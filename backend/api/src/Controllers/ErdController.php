@@ -20,6 +20,15 @@ final class ErdController
 {
     // -- customer / station helpers -----------------------------------------
 
+    private static function isStationAvailable(string $status): bool
+    {
+        return in_array(
+            strtolower(trim($status)),
+            ['closed', 'inactive', 'disabled', 'maintenance', 'paused', 'suspended', 'pending', 'deleted', 'archived', '0', 'false'],
+            true
+        ) === false;
+    }
+
     /** The CUSTOMER row for the signed-in user, created on first use. */
     private static function customerFor(string $userId): array
     {
@@ -30,11 +39,11 @@ final class ErdController
 
         $id = Database::uuid();
         Database::run(
-            'INSERT INTO customer (id, user_id, default_address, aqua_points) VALUES (?, ?, ?, 0)',
-            [$id, $userId, '']
+            'INSERT INTO customer (id, user_id, aqua_points) VALUES (?, ?, 0)',
+            [$id, $userId]
         );
 
-        return ['id' => $id, 'user_id' => $userId, 'default_address' => '', 'aqua_points' => 0];
+        return ['id' => $id, 'user_id' => $userId, 'aqua_points' => 0];
     }
 
     private static function ensureStation(string $id, string $name, string $address = ''): string
@@ -59,29 +68,18 @@ final class ErdController
         Response::fail('The selected station is no longer available. Refresh the station list and try again.', 404);
     }
 
-    /** Resolve (or create) the product row for a station + container type. */
-    private static function ensureProduct(string $stationId, string $type, string $label, float $unitPrice): string
+    /** Resolve the server-priced refill product for a station. */
+    private static function pricedProduct(string $stationId, string $type): ?array
     {
-        $type = $type !== '' ? $type : 'refill';
-        $id = mb_substr($stationId . ':' . $type, 0, 36);
-
-        $exists = Database::scalar('SELECT id FROM product WHERE id = ? LIMIT 1', [$id]);
-        if ($exists === null) {
-            Database::run(
-                'INSERT INTO product (id, station_id, name, unit, stock_qty, type) VALUES (?, ?, ?, ?, 0, ?)',
-                [$id, $stationId, mb_substr($label !== '' ? $label : $type, 0, 190), 'refill', $type]
-            );
-        }
-
-        $priced = Database::scalar('SELECT id FROM pricing WHERE product_id = ? LIMIT 1', [$id]);
-        if ($priced === null) {
-            Database::run(
-                'INSERT INTO pricing (id, product_id, price) VALUES (?, ?, ?)',
-                [Database::uuid(), $id, $unitPrice]
-            );
-        }
-
-        return $id;
+        $productName = $type === '5-gal-slim' ? '5-Gallon Slim' : '5-Gallon Round';
+        return Database::one(
+            'SELECT p.id, p.name,
+                    (SELECT pr.price FROM pricing pr WHERE pr.product_id = p.id
+                     ORDER BY pr.effective_from DESC, pr.id DESC LIMIT 1) AS unit_price
+             FROM product p
+             WHERE p.station_id = ? AND p.name = ? LIMIT 1',
+            [$stationId, $productName]
+        );
     }
 
     private static function stationName(string $stationId, string $fallback = ''): string
@@ -97,15 +95,39 @@ final class ErdController
 
     public static function stations(RouteContext $ctx): never
     {
-        $rows = Database::all('SELECT * FROM station ORDER BY name ASC');
-        $out = array_map(static fn (array $r): array => [
-            'id'       => $r['id'],
-            'name'     => (string) $r['name'],
-            'address'  => (string) $r['address'],
-            'coords'   => $r['lat'] === null || $r['lng'] === null ? null : ['lat' => (float) $r['lat'], 'lng' => (float) $r['lng']],
-            'status'   => (string) $r['status'],
-            'delivery' => true,
-        ], $rows);
+        $rows = Database::all(
+            "SELECT s.id, s.name, s.address, s.operating_hours, s.lat, s.lng, s.status,
+                    s.delivery, s.delivery_fee,
+                    (SELECT pr.price FROM product p
+                     JOIN pricing pr ON pr.product_id = p.id
+                     WHERE p.station_id = s.id AND p.name = '5-Gallon Slim'
+                     ORDER BY pr.effective_from DESC, pr.id DESC LIMIT 1) AS price_per_gallon
+             FROM station s ORDER BY s.name ASC"
+        );
+        $out = array_map(static function (array $r): array {
+            $hoursData = json_decode((string) ($r['operating_hours'] ?? ''), true);
+            $hours = '';
+            if (is_array($hoursData) && isset($hoursData['hours']) && is_scalar($hoursData['hours'])) {
+                $hours = (string) $hoursData['hours'];
+            }
+            $deliveryAvailable = (bool) $r['delivery'];
+
+            return [
+                'id'       => $r['id'],
+                'name'     => (string) $r['name'],
+                'address'  => (string) $r['address'],
+                'hours'    => $hours,
+                'pricePerGallon' => $r['price_per_gallon'] === null
+                    ? null
+                    : (float) $r['price_per_gallon'],
+                'coords'   => $r['lat'] === null || $r['lng'] === null ? null : ['lat' => (float) $r['lat'], 'lng' => (float) $r['lng']],
+                'status'   => (string) $r['status'],
+                'isAvailable' => self::isStationAvailable((string) $r['status']),
+                'delivery' => $deliveryAvailable,
+                'deliveryAvailable' => $deliveryAvailable,
+                'deliveryFee' => $deliveryAvailable ? (float) $r['delivery_fee'] : 0.0,
+            ];
+        }, $rows);
 
         Response::json(['stations' => $out]);
     }
@@ -127,31 +149,55 @@ final class ErdController
             Response::fail('Add at least one item to the order.', 400);
         }
 
-        $stationName = $ctx->str('stationName');
-        $stationId = self::ensureStation($stationId, $stationName, $ctx->str('stationAddress'));
+        $stationId = self::ensureStation($stationId, '');
+        $station = Database::one(
+            'SELECT id, name, address, status, delivery, delivery_fee FROM station WHERE id = ? LIMIT 1',
+            [$stationId]
+        );
+        if ($station === null || !self::isStationAvailable((string) $station['status'])) {
+            Response::fail('This station is closed or unavailable. Choose another station.', 400);
+        }
 
         $fulfillment = $ctx->str('fulfillmentType', $ctx->str('fulfillment', 'delivery'));
         $fulfillment = $fulfillment === 'pickup' ? 'pickup' : 'delivery';
+        if ($fulfillment === 'delivery' && !(bool) $station['delivery']) {
+            Response::fail('This station does not offer delivery.', 400);
+        }
         $status = $fulfillment === 'pickup' ? 'new' : 'pending';
 
         $cleanItems = [];
         $computedTotal = 0.0;
+        $gallons = 0;
+        $allowedTypes = ['5-gal-slim', '5-gal-round'];
         foreach ($items as $item) {
             if (!is_array($item)) {
-                continue;
+                Response::fail('Order items are invalid.', 400);
             }
-            $qty = (int) ($item['count'] ?? $item['qty'] ?? 0);
-            $unit = (float) ($item['unitPrice'] ?? $item['price'] ?? 0);
-            if ($qty < 1 || $unit < 0) {
-                Response::fail('Each order item needs a quantity of at least 1.', 400);
+            $rawQty = $item['count'] ?? $item['qty'] ?? null;
+            $qty = filter_var($rawQty, FILTER_VALIDATE_INT);
+            if ($qty === false || $qty < 1 || $qty > 100) {
+                Response::fail('Each order item quantity must be between 1 and 100.', 400);
             }
-            $type  = (string) ($item['type'] ?? 'refill');
-            $label = (string) ($item['label'] ?? $item['name'] ?? $type);
-            $productId = self::ensureProduct($stationId, $type, $label, $unit);
+            $type = (string) ($item['type'] ?? '');
+            if (!in_array($type, $allowedTypes, true)) {
+                Response::fail('Choose a supported water container type.', 400);
+            }
+            $product = self::pricedProduct($stationId, $type);
+            if ($product === null || $product['unit_price'] === null || !is_numeric($product['unit_price'])) {
+                Response::fail('Pricing is not configured for this station. Please contact the station.', 400);
+            }
+            $unit = (float) $product['unit_price'];
+            if ($unit <= 0) {
+                Response::fail('The station has invalid pricing configured.', 500);
+            }
+            $gallons += $qty;
+            if ($gallons > 100) {
+                Response::fail('An order cannot exceed 100 containers.', 400);
+            }
             $cleanItems[] = [
-                'productId' => $productId,
+                'productId' => (string) $product['id'],
                 'type'      => $type,
-                'label'     => $label,
+                'label'     => (string) $product['name'],
                 'qty'       => $qty,
                 'unitPrice' => $unit,
             ];
@@ -162,39 +208,66 @@ final class ErdController
             Response::fail('Add at least one item to the order.', 400);
         }
 
-        $subtotal    = (float) $ctx->input('subtotal', $computedTotal);
-        $discount    = (float) $ctx->input('discount', 0);
-        $deliveryFee = (float) $ctx->input('deliveryFee', 0);
-        $total       = (float) $ctx->input('total', max(0, $subtotal - $discount + $deliveryFee));
-        $gallons     = (int) $ctx->input('gallonsTotal', array_sum(array_column($cleanItems, 'qty')));
+        $bottleExchange = $ctx->str('bottleExchange', 'swap');
+        if (!in_array($bottleExchange, ['swap', 'new'], true)) {
+            Response::fail('Choose a valid bottle exchange option.', 400);
+        }
+        $applyPointsVoucher = filter_var(
+            $ctx->input('applyPointsVoucher', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        if ($applyPointsVoucher && (int) $customer['aqua_points'] < 100) {
+            Response::fail('At least 100 AquaPoints are required for this voucher.', 400);
+        }
+
+        $subtotal = round($computedTotal, 2);
+        $discountRate = $gallons >= 8 ? 0.15 : ($gallons >= 5 ? 0.10 : 0.0);
+        $discount = round($subtotal * $discountRate, 2) + ($applyPointsVoucher ? 30.0 : 0.0);
+        $deliveryFee = $fulfillment === 'delivery' ? (float) $station['delivery_fee'] : 0.0;
+        $depositFee = $bottleExchange === 'new' ? 160.0 * $gallons : 0.0;
+        $total = max(0.0, round($subtotal - $discount + $deliveryFee + $depositFee, 2));
         $points      = max(0, $gallons * 10);
+        $paymentMethod = $fulfillment === 'pickup' ? 'pay_at_counter' : 'cod';
 
         $meta = [
-            'stationName'     => $stationName !== '' ? $stationName : self::stationName($stationId),
-            'stationAddress'  => $ctx->str('stationAddress'),
+            'stationName'     => (string) $station['name'],
+            'stationAddress'  => (string) $station['address'],
             'customerName'    => (string) ($user['name'] ?? ''),
             'items'           => $cleanItems,
             'gallonsTotal'    => $gallons,
             'fulfillmentType' => $fulfillment,
+            'bottleExchange'  => $bottleExchange,
             'deliveryAddress' => $ctx->str('deliveryAddress'),
             'landmark'        => $ctx->str('landmark'),
-            'contactPhone'    => $ctx->str('contactPhone'),
             'notes'           => $ctx->str('notes'),
-            'paymentMethod'   => $ctx->str('paymentMethod', 'cod'),
-            'paymentStatus'   => $ctx->str('paymentMethod') === 'pay_at_counter' ? 'unpaid' : 'paid',
+            'paymentMethod'   => $paymentMethod,
+            'paymentStatus'   => $fulfillment === 'pickup' ? 'unpaid' : 'paid',
             'subtotal'        => $subtotal,
             'discount'        => $discount,
-            'deliveryFee'     => $deliveryFee,
+            'deliveryFee'     => $deliveryFee + $depositFee,
+            'depositFee'      => $depositFee,
             'pointsEarned'    => $points,
+            'pointsRedeemed'  => $applyPointsVoucher ? 100 : 0,
         ];
 
         $orderId = Database::uuid();
         $pdo = Database::pdo();
         $pdo->beginTransaction();
         try {
+            if ($applyPointsVoucher) {
+                $deducted = Database::run(
+                    'UPDATE customer SET aqua_points = aqua_points - 100 WHERE id = ? AND aqua_points >= 100',
+                    [$customer['id']]
+                )->rowCount();
+                if ($deducted !== 1) {
+                    $pdo->rollBack();
+                    Response::fail('At least 100 AquaPoints are required for this voucher.', 400);
+                }
+            }
+
             Database::run(
-                'INSERT INTO `ORDER` (id, customer_id, station_id, promotion_id, type, status, total, created_at, meta)
-                 VALUES (?, ?, ?, NULL, ?, ?, ?, NOW(), ?)',
+                'INSERT INTO `ORDER` (id, customer_id, station_id, type, status, total, created_at, meta)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)',
                 [
                     $orderId,
                     $customer['id'],
@@ -213,10 +286,12 @@ final class ErdController
                 );
             }
 
-            Database::run(
-                'UPDATE customer SET aqua_points = aqua_points + ? WHERE id = ?',
-                [$points, $customer['id']]
-            );
+            if ($points > 0) {
+                Database::run(
+                    'UPDATE customer SET aqua_points = aqua_points + ? WHERE id = ?',
+                    [$points, $customer['id']]
+                );
+            }
 
             self::notify(
                 (string) $user['id'],
@@ -329,7 +404,6 @@ final class ErdController
             'fulfillmentType' => $fulfillment,
             'deliveryAddress' => $meta['deliveryAddress'] ?? '',
             'landmark'       => $meta['landmark'] ?? '',
-            'contactPhone'   => $meta['contactPhone'] ?? '',
             'notes'          => $meta['notes'] ?? '',
             'paymentMethod'  => $meta['paymentMethod'] ?? 'cod',
             'paymentStatus'  => $meta['paymentStatus'] ?? 'paid',
@@ -427,8 +501,8 @@ final class ErdController
         ];
 
         Database::run(
-            'INSERT INTO subscription (id, customer_id, plan_id, start_date, next_delivery, status, meta, created_at)
-             VALUES (?, ?, ?, CURDATE(), ?, ?, ?, NOW())',
+            'INSERT INTO subscription (id, customer_id, plan_id, next_delivery, status, meta, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())',
             [$id, $customer['id'], $planId, $next, 'active', json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
         );
 
@@ -436,31 +510,6 @@ final class ErdController
 
         $row = Database::one('SELECT * FROM subscription WHERE id = ? LIMIT 1', [$id]);
         Response::json(['success' => true, 'subscription' => self::shapeSubscription((array) $row)], 201);
-    }
-
-    // -- profile address -----------------------------------------------------
-
-    /**
-     * PATCH /api/profile/address — ERD has a single CUSTOMER.default_address,
-     * so the newest address becomes the default used at checkout.
-     */
-    public static function updateAddress(RouteContext $ctx): never
-    {
-        $customer = self::customerFor((string) $ctx->user['id']);
-        $address = $ctx->str('address');
-        if ($address === '') {
-            Response::fail('Enter a delivery address.', 400);
-        }
-
-        Database::run(
-            'UPDATE customer SET default_address = ? WHERE id = ?',
-            [mb_substr($address, 0, 255), $customer['id']]
-        );
-
-        Response::json([
-            'success' => true,
-            'address' => mb_substr($address, 0, 255),
-        ]);
     }
 
     public static function cancelSubscription(RouteContext $ctx): never
@@ -613,8 +662,8 @@ final class ErdController
         try {
             Database::run('UPDATE customer SET aqua_points = aqua_points - ? WHERE id = ?', [$cost, $customer['id']]);
             Database::run(
-                'INSERT INTO customer_reward (id, customer_id, reward_id, points, reason, earned_at) VALUES (?, ?, ?, ?, ?, NOW())',
-                [Database::uuid(), $customer['id'], $rewardId, $cost, 'Redeemed']
+                'INSERT INTO customer_reward (id, customer_id, reward_id, points, earned_at) VALUES (?, ?, ?, ?, NOW())',
+                [Database::uuid(), $customer['id'], $rewardId, $cost]
             );
             self::notify((string) $user['id'], 'Reward redeemed', sprintf('You claimed "%s". Voucher code: %s.', $reward['name'], $reward['code'] ?? ''));
             $pdo->commit();

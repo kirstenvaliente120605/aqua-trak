@@ -1,7 +1,6 @@
 import { Router } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sendSystemEmail } from "../../../emailService.js";
 import {
   clearSessionCookie,
   parseCookies,
@@ -11,6 +10,7 @@ import {
 } from "../middleware/auth.js";
 import {
   authenticate,
+  checkCredentials,
   createSession,
   createUser,
   destroySession,
@@ -19,6 +19,12 @@ import {
   updateStaffApproval,
   updateUserProfile,
 } from "../services/authStore.js";
+import {
+  issueOtp,
+  useResetToken,
+  verifyEmailAddress,
+  verifyOtp,
+} from "../services/otpService.js";
 import {
   cancelSubscription,
   createOrder,
@@ -56,6 +62,17 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const frontendPages = path.resolve(root, "../../../frontend/pages");
 
 const roles = new Set(["customer", "owner", "staff"]);
+const validEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+const otpError = (res, code) => {
+  const [status, message] = {
+    OTP_COOLDOWN: [429, "Please wait before requesting another code."],
+    OTP_RATE_LIMITED: [429, "Too many requests. Please try again later."],
+    OTP_EXPIRED: [400, "This code has expired. Request a new code."],
+    OTP_TOO_MANY_ATTEMPTS: [429, "Too many incorrect attempts. Request a new code."],
+    OTP_DELIVERY_FAILED: [503, "We could not send a code right now. Please try again later."],
+  }[code] || [400, "That code is incorrect or no longer valid."];
+  return res.status(status).json({ error: message, code });
+};
 const sections = {
   customer: new Set([
     "find-stations",
@@ -110,17 +127,29 @@ router.post("/auth/logout", handleLogout);
 
 // AJAX JSON login endpoint
 router.post("/auth/login", async (req, res) => {
-  const { email, password, role } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  const { role } = req.body;
+  if (!validEmail(email) || !password) {
+    return res.status(400).json({ error: "Enter a valid email address and password.", code: "INVALID_INPUT" });
   }
-  const user = await authenticate(email, password);
-  if (!user) {
+  const candidate = await checkCredentials(email, password);
+  if (!candidate) {
     return res.status(401).json({ error: "Invalid email or password." });
   }
-  if (role && user.role !== role) {
-    return res.status(403).json({ error: `Account is registered as ${user.role}, not ${role}.` });
+  if (role && !roles.has(role)) {
+    return res.status(400).json({ error: "Choose a valid account role.", code: "INVALID_INPUT" });
   }
+  if (role && candidate.role !== role) {
+    return res.status(403).json({ error: `Account is registered as ${candidate.role}, not ${role}.` });
+  }
+  if (!candidate.emailVerified) {
+    return res.status(403).json({ error: "Verify your email address before signing in.", code: "EMAIL_NOT_VERIFIED" });
+  }
+  if (candidate.status !== "active") {
+    return res.status(403).json({ error: "Your staff account is waiting for owner approval.", code: "STAFF_PENDING" });
+  }
+  const user = await authenticate(email, password);
   const token = await createSession(user);
   setSessionCookie(res, token);
   return res.json({
@@ -134,11 +163,139 @@ router.post("/auth/login", async (req, res) => {
       station: user.station,
       stationId: user.stationId,
       permissions: user.permissions,
-      phone: user.phone,
-      location: user.location,
+      emailVerified: user.emailVerified,
     },
     redirectUrl: `/dashboard/${user.role}`,
   });
+});
+
+router.post("/auth/signup", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
+  const role = String(req.body.role || "customer");
+  if (!validEmail(email) || !roles.has(role)) {
+    return res.status(400).json({ error: "Enter a valid email and account type.", code: "INVALID_INPUT" });
+  }
+  if (password.length < 8 || password.length > 128) {
+    return res.status(400).json({ error: "Password must be between 8 and 128 characters.", code: "INVALID_INPUT" });
+  }
+  if (req.body.confirmPassword !== undefined && password !== String(req.body.confirmPassword)) {
+    return res.status(400).json({ error: "Passwords must match.", code: "INVALID_INPUT" });
+  }
+  let created;
+  try {
+    created = await createUser({
+      email,
+      password,
+      name: req.body.name,
+      role,
+      station: role === "owner" ? req.body.station : "",
+    });
+  } catch (error) {
+    console.error("Account registration failed:", error);
+    return res.status(500).json({
+      error: "Account creation could not be completed. Check the server database setup and try again.",
+      code: "SIGNUP_FAILED",
+    });
+  }
+  if (created.error) return res.status(400).json({ error: created.error, code: "SIGNUP_INVALID" });
+  let result;
+  try {
+    result = await issueOtp(email, created.user.id, "verify_email", req.ip);
+  } catch (error) {
+    console.error("Account created but verification setup failed:", error);
+    return res.status(503).json({
+      error: "Your account was created, but verification could not be started. Please try again later.",
+      code: "OTP_DELIVERY_FAILED",
+      email,
+    });
+  }
+  if (!result.ok) {
+    return res.status(result.code === "OTP_RATE_LIMITED" ? 429 : 503).json({
+      error: result.code === "OTP_RATE_LIMITED"
+        ? "Too many verification requests. Please try again later."
+        : "Your account was created, but we could not send a code. Please try again later.",
+      code: result.code,
+      email,
+    });
+  }
+  return res.status(201).json({ ok: true, message: "A verification code has been sent to your email.", email });
+});
+
+router.post("/auth/verify-email", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const otp = String(req.body.otp || "");
+  if (!validEmail(email) || !/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ error: "Enter a valid email and six-digit code.", code: "INVALID_INPUT" });
+  }
+  const result = await verifyOtp(email, otp, "verify_email", req.ip);
+  if (!result.ok) return otpError(res, result.code);
+  const user = await verifyEmailAddress(result.userId);
+  if (!user || user.email !== email) {
+    return res.status(400).json({ error: "This verification code is no longer valid.", code: "OTP_INVALID" });
+  }
+  const { passwordHash, ...publicUser } = user;
+  if (user.status !== "active") {
+    return res.json({
+      success: true,
+      user: publicUser,
+      notice: "Your staff account is waiting for owner approval.",
+      redirectUrl: "/auth/staff/login?notice=staff-pending",
+    });
+  }
+  const token = await createSession(user);
+  setSessionCookie(res, token);
+  return res.json({ success: true, user: publicUser, redirectUrl: `/dashboard/${user.role}` });
+});
+
+router.post("/auth/resend-otp", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const purpose = String(req.body.purpose || "");
+  if (!validEmail(email) || !["verify_email", "reset_password"].includes(purpose)) {
+    return res.status(400).json({ error: "Enter a valid email and code purpose.", code: "INVALID_INPUT" });
+  }
+  const user = await findUserByEmail(email);
+  const canSend = user && !(purpose === "verify_email" && user.emailVerified);
+  await issueOtp(email, canSend ? user.id : null, purpose, req.ip);
+  return res.json({ ok: true, message: "If the account can receive a code, one will be sent shortly." });
+});
+
+router.post("/auth/forgot-password", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  if (!validEmail(email)) {
+    return res.status(400).json({ error: "Enter a valid email address.", code: "INVALID_INPUT" });
+  }
+  const user = await findUserByEmail(email);
+  await issueOtp(email, user?.id || null, "reset_password", req.ip);
+  return res.json({ ok: true, message: "If an account exists for that email, a reset code will be sent shortly." });
+});
+
+router.post("/auth/verify-reset-otp", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const otp = String(req.body.otp || "");
+  if (!validEmail(email) || !/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ error: "Enter a valid email and six-digit code.", code: "INVALID_INPUT" });
+  }
+  const result = await verifyOtp(email, otp, "reset_password", req.ip);
+  if (!result.ok) return otpError(res, result.code);
+  return res.json({ ok: true, resetToken: result.resetToken });
+});
+
+router.post("/auth/reset-password", async (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const resetToken = String(req.body.resetToken || "");
+  const newPassword = String(req.body.newPassword || "");
+  if (!validEmail(email) || !/^[a-f0-9]{64}$/i.test(resetToken)) {
+    return res.status(400).json({ error: "The password reset session is invalid. Request a new code.", code: "RESET_TOKEN_INVALID" });
+  }
+  if (newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).json({ error: "Password must be between 8 and 128 characters.", code: "INVALID_INPUT" });
+  }
+  const reset = await useResetToken(email, resetToken, newPassword);
+  if (!reset) {
+    return res.status(400).json({ error: "The password reset session expired or was already used. Request a new code.", code: "RESET_TOKEN_INVALID" });
+  }
+  return res.json({ ok: true, message: "Your password has been reset. Sign in with your new password." });
 });
 
 router.get("/api/auth/me", (req, res) => {
@@ -150,7 +307,7 @@ router.get("/api/auth/me", (req, res) => {
 router.get("/api/staff-approvals", requireAuth, async (req, res) => {
   if (req.user.role !== "owner")
     return res.status(403).json({ error: "Owner access required." });
-  const approvals = await listStaffApprovals(req.user.station);
+  const approvals = await listStaffApprovals(req.user.stationId);
   return res.json({ approvals });
 });
 
@@ -159,7 +316,7 @@ router.post("/api/staff-approvals/:id", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Owner access required." });
   const updated = await updateStaffApproval(
     req.params.id,
-    req.user.station,
+    req.user.stationId,
     req.body.decision
   );
   if (!updated)
@@ -180,10 +337,10 @@ router.get("/api/orders", requireAuth, (req, res) => {
   return res.json({ orders: listOrders(req.user.id) });
 });
 
-router.post("/api/orders", requireAuth, (req, res) => {
+router.post("/api/orders", requireAuth, async (req, res) => {
   if (req.user.role !== "customer")
     return res.status(403).json({ error: "Customer access required." });
-  const result = createOrder(req.user, req.body);
+  const result = await createOrder(req.user, req.body);
   if (result.error) return res.status(400).json({ error: result.error });
   return res.status(201).json(result);
 });
@@ -324,6 +481,10 @@ router.get("/auth/:role/:mode", (req, res) => {
   return sendPage("auth.html")(req, res);
 });
 
+for (const path of ["/auth/verify-email", "/auth/forgot-password", "/auth/reset-otp", "/auth/reset-password"]) {
+  router.get(path, sendPage("otp.html"));
+}
+
 router.post("/auth/:role/:mode", async (req, res) => {
   if (
     !roles.has(req.params.role) ||
@@ -343,24 +504,19 @@ router.post("/auth/:role/:mode", async (req, res) => {
       password: req.body.password,
       name: req.body.name,
       role,
-      station: req.body.station,
+      station: role === "owner" ? req.body.station : "",
     });
     if (result.error)
       return res.redirect(
         `/auth/${role}/register?error=${encodeURIComponent(result.error)}`
       );
-    const emailSent = await sendSystemEmail(
-      req.body.email,
-      "Welcome to AquaTracker!",
-      "<h1>Welcome!</h1><p>Your account is ready.</p>"
-    );
-    if (emailSent === false)
-      console.warn("User registered, but welcome email failed to send.");
-    if (role === "staff")
-      return res.redirect("/auth/staff/login?notice=staff-pending");
-    const token = await createSession(result.user);
-    setSessionCookie(res, token);
-    return res.redirect(`/dashboard/${role}`);
+    const otp = await issueOtp(result.user.email, result.user.id, "verify_email", req.ip);
+    const delivery = !otp.ok ? "&delivery=failed" : "";
+    return res.redirect(`/auth/${role}/login?error=email_not_verified&email=${encodeURIComponent(result.user.email)}${delivery}`);
+  }
+  const credentials = await checkCredentials(req.body.email, req.body.password);
+  if (credentials && !credentials.emailVerified) {
+    return res.redirect(`/auth/${role}/login?error=email_not_verified&email=${encodeURIComponent(credentials.email)}`);
   }
   const pendingUser = await findUserByEmail(req.body.email);
   if (pendingUser?.role === role && pendingUser.status === "pending")

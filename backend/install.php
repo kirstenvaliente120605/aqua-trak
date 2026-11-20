@@ -66,8 +66,7 @@ function demoUsers(): array
             'name'        => 'Customer Demo',
             'role'        => 'customer',
             'subtitle'    => 'Customer account',
-            'station'     => '',
-            'station_id'  => '',
+            'station_id'  => null,
             'permissions' => [],
         ],
         [
@@ -75,9 +74,8 @@ function demoUsers(): array
             'password'    => 'OwnerDemo123!',
             'name'        => 'Owner Demo',
             'role'        => 'owner',
-            'subtitle'    => 'ClearSpring Water Hub',
-            'station'     => 'ClearSpring Water Hub',
-            'station_id'  => '',
+            'subtitle'    => 'Station owner',
+            'station_id'  => 'drink-refill',
             'permissions' => [],
         ],
         [
@@ -86,7 +84,6 @@ function demoUsers(): array
             'name'        => 'Staff Demo',
             'role'        => 'staff',
             'subtitle'    => 'Station staff',
-            'station'     => 'ClearSpring Water Hub',
             'station_id'  => 'drink-refill',
             'permissions' => ['orders', 'inventory', 'requests'],
         ],
@@ -122,9 +119,9 @@ try {
         }
 
         $pdo->prepare(
-            'INSERT INTO users (id, email, password_hash, name, role, subtitle, station,
+            'INSERT INTO users (id, email, password_hash, full_name, role, subtitle,
                                 station_id, permissions, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             Database::uuid(),
             $user['email'],
@@ -132,7 +129,6 @@ try {
             $user['name'],
             $user['role'],
             $user['subtitle'],
-            $user['station'],
             $user['station_id'],
             json_encode($user['permissions'], JSON_UNESCAPED_SLASHES),
             'active',

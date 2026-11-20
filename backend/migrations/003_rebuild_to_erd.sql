@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS `notification` (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `reward` (
   `id`              CHAR(36)     NOT NULL DEFAULT (UUID()),
-  `owner_id`        CHAR(36)     NOT NULL,
+  `owner_id`        CHAR(36)     NULL,
   `title`           VARCHAR(190) NOT NULL,
   `description`     VARCHAR(255) NOT NULL,
   `status`          VARCHAR(40)  NOT NULL DEFAULT 'active',
@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS `station` (
   `lng`             DECIMAL(10,7) DEFAULT NULL,
   `operating_hours` JSON         DEFAULT NULL,
   `status`          VARCHAR(40)  NOT NULL DEFAULT 'open',
+  `delivery`        TINYINT(1)   NOT NULL DEFAULT 0,
+  `delivery_fee`    DECIMAL(10,2) NOT NULL DEFAULT 15.00,
   PRIMARY KEY (`id`),
   KEY `ix_station_owner` (`owner_id`),
   KEY `ix_station_lat_lng` (`lat`,`lng`),
@@ -309,28 +311,28 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- =============================================================================
 -- Seed default station catalogue (same as 001+original)
 -- =============================================================================
-INSERT IGNORE INTO `station` (`id`, `name`, `address`, `phone`, `hours`, `rating`, `price_per_gallon`, `delivery`, `lat`, `lng`) VALUES
-  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, Pagadian City',                      '45 Sabellano St, San Jose District, Pagadian City',    'Mon-Sat 7:30 AM-5:00 PM',  4.9, 35, 1, 7.8273300, 123.4441850),
-  ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit',                            'Purok Bakhaw A, Brgy. Kawit, Pagadian City',          'Mon-Sun 8:00 AM-6:00 PM',   4.7, 30, 0, 7.8312000, 123.4437000),
-  ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit',                              'Purok Pagang, Brgy. Kawit, Pagadian City',             'Mon-Sat 7:00 AM-6:30 PM',   4.8, 35, 1, 7.8347000, 123.4481000),
-  ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok',                        'Purok Makugihon, Brgy. Bulatok, Pagadian City',        'Mon-Sat 8:00 AM-5:00 PM',   4.6, 30, 0, 7.8198000, 123.4297000),
-  ('aquater',       'Aqua''Ter SMN Water Refilling Station',            'Beside DXPR, San Jose District',                         'Beside DXPR Radio, San Jose District, Pagadian City',  'Mon-Sun 6:30 AM-7:00 PM',   4.9, 25, 1, 7.8191000, 123.4412000),
-  ('ph2o',          'PH2O Water Refilling Station',                      'Warlito Pulmones St, Santiago District',                 'Warlito Pulmones St, Santiago District, Pagadian City','0985 337 4448', '24/7 Automated Vendo & Counter', 4.8, 30, 0, 7.8362000, 123.4264000),
-  ('alka',          'Alka Water Refilling Station',                      'Zone 11, Alta Tierra Subdivision, Tiguma',               'Zone 11, Alta Tierra Subdivision, Tiguma',             '',              '',                            0.0, 35, 1, 7.8405800, 123.4633600)
+INSERT IGNORE INTO `station` (`id`, `name`, `address`, `hours`, `rating`, `price_per_gallon`, `delivery`, `delivery_fee`, `lat`, `lng`) VALUES
+  ('drink-refill',  'DRINK n'' REFILL Purified Water Refilling Station', '45 Sabellano St, San Jose District, Pagadian City', 'Mon-Sat 7:30 AM-5:00 PM', 4.9, 35, 1, 15, 7.8273300, 123.4441850),
+  ('ultra-pure',    'Ultra Pure Water Refilling Station',                'Purok Bakhaw A, Brgy. Kawit, Pagadian City',       'Mon-Sun 8:00 AM-6:00 PM',  4.7, 30, 0, 0, 7.8312000, 123.4437000),
+  ('waterpol',      'Waterpol Water Refilling Station',                  'Purok Pagang, Brgy. Kawit, Pagadian City',          'Mon-Sat 7:00 AM-6:30 PM',  4.8, 35, 1, 15, 7.8347000, 123.4481000),
+  ('pg-aquamaster', 'PG Aquamaster Water Refilling Station',             'Purok Makugihon, Brgy. Bulatok, Pagadian City',    'Mon-Sat 8:00 AM-5:00 PM',  4.6, 30, 0, 0, 7.8198000, 123.4297000),
+  ('aquater',       'Aqua''Ter SMN Water Refilling Station',             'Beside DXPR Radio, San Jose District, Pagadian City', 'Mon-Sun 6:30 AM-7:00 PM', 4.9, 25, 1, 15, 7.8191000, 123.4412000),
+  ('ph2o',          'PH2O Water Refilling Station',                     'Warlito Pulmones St, Santiago District, Pagadian City', '24/7 Automated Vendo & Counter', 4.8, 30, 0, 0, 7.8362000, 123.4264000),
+  ('alka',          'Alka Water Refilling Station',                     'Zone 11, Alta Tierra Subdivision, Tiguma',            '', 0.0, 35, 1, 15, 7.8405800, 123.4633600)
 ON DUPLICATE KEY UPDATE
   `name`             = VALUES(`name`),
   `address`          = VALUES(`address`),
-  `phone`            = VALUES(`phone`),
   `hours`            = VALUES(`hours`),
   `rating`           = VALUES(`rating`),
   `price_per_gallon` = VALUES(`price_per_gallon`),
   `delivery`         = VALUES(`delivery`),
+  `delivery_fee`     = VALUES(`delivery_fee`),
   `lat`              = VALUES(`lat`),
   `lng`              = VALUES(`lng`);
 
-INSERT IGNORE INTO `user` (`id`, `email`, `password_hash`, `role`, `full_name`, `phone`, `remember_me`) VALUES
-  ('USR_001', 'customer.demo@example.com', '', 'customer', 'Customer Demo', NULL, 0),
-  ('USR_002', 'owner.demo@example.com', '', 'owner', 'Owner Demo', NULL, 0);
+INSERT IGNORE INTO `user` (`id`, `email`, `password_hash`, `role`, `full_name`, `remember_me`) VALUES
+  ('USR_001', 'customer.demo@example.com', '', 'customer', 'Customer Demo', 0),
+  ('USR_002', 'owner.demo@example.com', '', 'owner', 'Owner Demo', 0);
 
 UPDATE `id_sequence` SET `value` = GREATEST(`value`, 2) WHERE `name` = 'users';
 

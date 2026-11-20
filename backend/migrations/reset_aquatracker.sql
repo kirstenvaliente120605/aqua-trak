@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS `notification` (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `reward` (
   `id`              CHAR(36)     NOT NULL DEFAULT (UUID()),
-  `owner_id`        CHAR(36)     NOT NULL,
+  `owner_id`        CHAR(36)     NULL,
   `title`           VARCHAR(190) NOT NULL,
   `description`     VARCHAR(255) NOT NULL,
   `status`          VARCHAR(40)  NOT NULL DEFAULT 'active',

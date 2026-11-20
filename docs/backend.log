@@ -1,0 +1,18 @@
+AquaTracker running at http://localhost:3002
+file:///C:/Users/Jewel%20Kim/Desktop/Kirsten/New%20folder/backend/src/services/authStore.js:169
+  await pool.execute("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)", [token, user.id, expiresAt]);
+                                                                                                        ^
+
+TypeError: Cannot read properties of undefined (reading 'id')
+    at createSession (file:///C:/Users/Jewel%20Kim/Desktop/Kirsten/New%20folder/backend/src/services/authStore.js:169:105)
+    at file:///C:/Users/Jewel%20Kim/Desktop/Kirsten/New%20folder/backend/src/routes/index.js:309:25
+    at Layer.handle [as handle_request] (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\layer.js:95:5)
+    at next (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\layer.js:95:5)
+    at C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\index.js:284:15
+    at param (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\index.js:365:14)
+    at param (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\index.js:376:14)
+    at param (C:\Users\Jewel Kim\Desktop\Kirsten\New folder\node_modules\express\lib\router\index.js:376:14)
+
+Node.js v24.21.0
